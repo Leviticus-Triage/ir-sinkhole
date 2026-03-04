@@ -12,7 +12,8 @@ from pathlib import Path
 
 from .capture import get_active_tcp_connections, run_capture, unique_remote_endpoints
 from .config import CaptureConfig, FirewallConfig, SinkholeConfig
-from .firewall import apply_firewall, nftables_available, remove_firewall, save_rules_to_file
+from .dns_sinkhole import DNS_SINKHOLE_PORT, start_dns_sinkhole
+from .firewall import apply_firewall, flush_conntrack, nftables_available, remove_firewall, save_rules_to_file
 from .replay import build_replay_db
 from .sinkhole import create_sinkhole
 
@@ -106,6 +107,9 @@ def cmd_contain(args: argparse.Namespace) -> int:
         print("error: no remote endpoints in capture", file=sys.stderr)
         return 1
 
+    allow_ips = list(args.allow_ip) if args.allow_ip else []
+    use_dns_sinkhole = not args.no_dns_sinkhole
+
     pcap_path = out / "capture.pcap"
     replay_db = build_replay_db(pcap_path) if pcap_path.exists() else {}
     from .replay import save_replay_db
@@ -132,9 +136,14 @@ def cmd_contain(args: argparse.Namespace) -> int:
         print("error: no sinkhole ports (no endpoints)", file=sys.stderr)
         return 1
 
+    dns_port = DNS_SINKHOLE_PORT if use_dns_sinkhole else None
+
     PID_FILE.parent.mkdir(parents=True, exist_ok=True)
     PID_FILE.write_text(str(os.getpid()))
-    save_rules_to_file(port_map, firewall_cfg, out / "nft_containment.nft")
+    save_rules_to_file(
+        port_map, firewall_cfg, out / "nft_containment.nft",
+        allow_ips=allow_ips, dns_sinkhole_port=dns_port,
+    )
 
     record_pcap_proc = None
     if getattr(args, "record_pcap", None):
@@ -142,14 +151,19 @@ def cmd_contain(args: argparse.Namespace) -> int:
         rec_path = Path(args.record_pcap)
         rec_path.parent.mkdir(parents=True, exist_ok=True)
         record_pcap_proc = subprocess.Popen(
-            ["tshark", "-i", "lo", "-w", str(rec_path), "-f", "tcp"],
+            ["tshark", "-i", "lo", "-w", str(rec_path), "-f", "tcp or udp port 53"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
         LOG.info("Recording containment traffic to %s (tshark PID %s)", rec_path, record_pcap_proc.pid)
 
+    dns_transport = None
+
     def cleanup() -> None:
-        nonlocal record_pcap_proc
+        nonlocal record_pcap_proc, dns_transport
+        if dns_transport is not None:
+            dns_transport.close()
+            LOG.info("DNS sinkhole stopped")
         if record_pcap_proc is not None and record_pcap_proc.poll() is None:
             import subprocess as _sub
             record_pcap_proc.terminate()
@@ -170,7 +184,12 @@ def cmd_contain(args: argparse.Namespace) -> int:
     signal.signal(signal.SIGTERM, sig_handler)
 
     async def run():
+        nonlocal dns_transport
         host = sinkhole_cfg.bind_host
+
+        if use_dns_sinkhole:
+            dns_transport, _ = await start_dns_sinkhole(host, DNS_SINKHOLE_PORT)
+
         for i, (remote_ip, remote_port) in enumerate(endpoints):
             local_port = args.port_start + i
             key = (remote_ip, remote_port)
@@ -180,8 +199,28 @@ def cmd_contain(args: argparse.Namespace) -> int:
             s = await asyncio.start_server(handler, host, local_port)
             server._servers.append(s)
             LOG.info("Sinkhole %s:%d -> %s:%s (%d chunks)", host, local_port, remote_ip, remote_port, len(chunks))
-        apply_firewall(port_map, firewall_cfg)
-        print("Containment active. Traffic to captured endpoints redirected to sinkhole. Ctrl+C to stop.")
+
+        apply_firewall(
+            port_map, firewall_cfg,
+            allow_ips=allow_ips,
+            dns_sinkhole_port=dns_port,
+        )
+
+        if not args.no_conntrack_flush:
+            flush_conntrack(port_map, allow_ips=allow_ips)
+
+        features = []
+        features.append("TCP sinkhole (%d endpoints)" % len(endpoints))
+        if use_dns_sinkhole:
+            features.append("DNS sinkhole (UDP 53)")
+        if not args.no_conntrack_flush:
+            features.append("conntrack flushed")
+        if allow_ips:
+            features.append("whitelist: %s" % ", ".join(allow_ips))
+        if not args.no_drop_egress:
+            features.append("egress blocked")
+
+        print("Containment active [%s]. Ctrl+C to stop." % " | ".join(features))
         await asyncio.gather(*[s.serve_forever() for s in server._servers])
 
     try:
@@ -233,7 +272,10 @@ def main() -> int:
     p_contain.add_argument("-o", "--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR, help="Capture output directory")
     p_contain.add_argument("--port-start", type=int, default=19000, help="First local port for sinkhole")
     p_contain.add_argument("--no-drop-egress", action="store_true", help="Do not drop other egress (only redirect)")
-    p_contain.add_argument("--record-pcap", type=Path, metavar="PATH", help="Run tshark during containment, write PCAP to PATH (for anomaly analysis)")
+    p_contain.add_argument("--record-pcap", type=Path, metavar="PATH", help="Run tshark during containment, write PCAP to PATH")
+    p_contain.add_argument("--allow-ip", action="append", metavar="IP", help="Whitelist IP from containment (e.g. SSH jump host). Repeatable.")
+    p_contain.add_argument("--no-dns-sinkhole", action="store_true", help="Disable DNS sinkhole (UDP 53 redirect)")
+    p_contain.add_argument("--no-conntrack-flush", action="store_true", help="Do not flush established connections on start")
 
     # stop
     sub.add_parser("stop", help="Remove firewall rules and PID file")

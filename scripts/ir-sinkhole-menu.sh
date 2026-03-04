@@ -206,6 +206,13 @@ do_contain() {
   ask "  Drop ALL other egress traffic? (Y/n) [Y]:" drop
   drop=${drop:-Y}
 
+  ask "  Enable DNS sinkhole (block DNS tunneling)? (Y/n) [Y]:" usedns
+  usedns=${usedns:-Y}
+
+  ask "  Flush established connections (force through DNAT)? (Y/n) [Y]:" useflush
+  useflush=${useflush:-Y}
+
+  ask "  Whitelist management IPs (comma-separated, or empty):" wl_ips
   ask "  Record containment PCAP? Enter path or leave empty:" rec
 
   echo ""
@@ -217,6 +224,28 @@ do_contain() {
     warn "Egress NOT blocked — only redirecting captured endpoints."
   else
     ok "Full containment — all egress will be blocked except sinkhole."
+  fi
+  if [[ "$usedns" =~ ^[Nn]$ ]]; then
+    args+=(--no-dns-sinkhole)
+    warn "DNS sinkhole disabled — DNS tunneling NOT blocked."
+  else
+    ok "DNS sinkhole enabled — all DNS queries redirected to 127.0.0.1"
+  fi
+  if [[ "$useflush" =~ ^[Nn]$ ]]; then
+    args+=(--no-conntrack-flush)
+    warn "Conntrack flush disabled — established connections stay alive."
+  else
+    ok "Conntrack flush enabled — established C2 connections will be killed."
+  fi
+  if [[ -n "$wl_ips" ]]; then
+    IFS=',' read -ra ips <<< "$wl_ips"
+    for ip in "${ips[@]}"; do
+      ip=$(echo "$ip" | xargs)
+      if [[ -n "$ip" ]]; then
+        args+=(--allow-ip "$ip")
+        ok "Whitelisted: $ip"
+      fi
+    done
   fi
   if [[ -n "$rec" ]]; then
     args+=(--record-pcap "$rec")

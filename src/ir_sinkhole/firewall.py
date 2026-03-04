@@ -1,6 +1,6 @@
 """
 nftables rules: DNAT outbound connections to C2 endpoints to local sinkhole ports,
-and optionally drop all other egress (containment).
+DNS redirect to local sinkhole, conntrack flush, and optional egress drop.
 """
 import logging
 import subprocess
@@ -31,10 +31,21 @@ def nftables_available() -> bool:
     return code == 0
 
 
-def apply_firewall(port_map: PortMap, config: FirewallConfig, family: str = "ip") -> bool:
+def apply_firewall(
+    port_map: PortMap,
+    config: FirewallConfig,
+    family: str = "ip",
+    allow_ips: Optional[list[str]] = None,
+    dns_sinkhole_port: Optional[int] = None,
+) -> bool:
     """
-    Add table and chain; add DNAT rules for each (remote_ip, remote_port) -> 127.0.0.1:local_port;
-    then drop all other egress if config.drop_all_egress_after_redirect.
+    Build the full containment firewall:
+    1. Create table + nat output chain
+    2. Allow loopback
+    3. Whitelist management IPs (--allow-ip)
+    4. DNS redirect to local sinkhole (UDP 53)
+    5. DNAT rules per captured endpoint
+    6. Optional: drop all remaining egress
     """
     table = config.table_name
     chain = config.chain_name
@@ -54,6 +65,20 @@ def apply_firewall(port_map: PortMap, config: FirewallConfig, family: str = "ip"
     LOG.info("Created chain %s (type nat, hook output, priority -100)", chain)
 
     _nft(f"add rule {family} {table} {chain} oifname \"lo\" accept")
+
+    if allow_ips:
+        for ip in allow_ips:
+            _nft(f"add rule {family} {table} {chain} ip daddr {ip} accept")
+            LOG.info("Whitelisted management IP: %s", ip)
+
+    if dns_sinkhole_port:
+        code, err = _nft(
+            f"add rule {family} {table} {chain} udp dport 53 dnat to 127.0.0.1:{dns_sinkhole_port}"
+        )
+        if code != 0:
+            LOG.warning("DNS redirect rule failed: %s", err.strip())
+        else:
+            LOG.info("DNS redirect: UDP 53 → 127.0.0.1:%d", dns_sinkhole_port)
 
     ok_count = 0
     fail_count = 0
@@ -77,6 +102,41 @@ def apply_firewall(port_map: PortMap, config: FirewallConfig, family: str = "ip"
     return True
 
 
+def flush_conntrack(
+    port_map: PortMap,
+    allow_ips: Optional[list[str]] = None,
+) -> int:
+    """Flush conntrack entries for captured endpoints so established connections
+    are forced to re-establish through the DNAT rules.
+    Returns number of flushed entries."""
+    flushed = 0
+    allow_set = set(allow_ips) if allow_ips else set()
+    for (remote_ip, remote_port), _ in port_map.items():
+        if remote_ip in allow_set:
+            continue
+        try:
+            r = subprocess.run(
+                ["conntrack", "-D", "-d", remote_ip, "-p", "tcp", "--dport", str(remote_port)],
+                capture_output=True, text=True, timeout=5,
+            )
+            if r.returncode == 0:
+                count = 1
+                for line in r.stdout.strip().split("\n"):
+                    if "flow" in line.lower():
+                        try:
+                            count = int(line.split()[0])
+                        except (ValueError, IndexError):
+                            pass
+                flushed += count
+        except (subprocess.TimeoutExpired, FileNotFoundError):
+            pass
+    if flushed > 0:
+        LOG.info("Conntrack flush: %d established connection(s) killed → will reconnect through DNAT", flushed)
+    else:
+        LOG.info("Conntrack flush: no established entries found for captured endpoints")
+    return flushed
+
+
 def remove_firewall(config: FirewallConfig, family: str = "ip") -> bool:
     """Remove our table (and all chains/rules)."""
     table = config.table_name
@@ -88,7 +148,14 @@ def remove_firewall(config: FirewallConfig, family: str = "ip") -> bool:
     return True
 
 
-def save_rules_to_file(port_map: PortMap, config: FirewallConfig, path: Path, family: str = "ip") -> None:
+def save_rules_to_file(
+    port_map: PortMap,
+    config: FirewallConfig,
+    path: Path,
+    family: str = "ip",
+    allow_ips: Optional[list[str]] = None,
+    dns_sinkhole_port: Optional[int] = None,
+) -> None:
     """Write nftables script to path for manual inspection or restore."""
     table = config.table_name
     chain = config.chain_name
@@ -100,6 +167,11 @@ def save_rules_to_file(port_map: PortMap, config: FirewallConfig, path: Path, fa
         f"add chain {family} {table} {chain} {{ type nat hook output priority -100 ; policy accept ; }}",
         "add rule %s %s %s oifname \"lo\" accept" % (family, table, chain),
     ]
+    if allow_ips:
+        for ip in allow_ips:
+            lines.append(f"add rule {family} {table} {chain} ip daddr {ip} accept")
+    if dns_sinkhole_port:
+        lines.append(f"add rule {family} {table} {chain} udp dport 53 dnat to 127.0.0.1:{dns_sinkhole_port}")
     for (remote_ip, remote_port), local_port in port_map.items():
         lines.append(f"add rule {family} {table} {chain} ip daddr {remote_ip} tcp dport {remote_port} dnat to 127.0.0.1:{local_port}")
     if config.drop_all_egress_after_redirect:
