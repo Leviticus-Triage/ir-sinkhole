@@ -105,8 +105,10 @@ sudo ir-sinkhole stop
 On a fresh host (or after removing `/opt/ir-sinkhole`):
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/Leviticus-Triage/ir-sinkhole/main/scripts/ir-sinkhole-menu.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/Leviticus-Triage/ir-sinkhole/main/scripts/run.sh | bash
 ```
+
+(Enter sudo password when prompted. The bootstrap downloads the menu and runs it with terminal stdin so the menu is interactive.)
 
 - The script installs dependencies (apt), clones the repo to `/opt/ir-sinkhole`, sets up the venv, then shows the menu.
 - Choose **[1] Status**, **[2] Capture**, **[3] Contain**, or **[4] Stop** and follow the prompts (duration, output dir, interface, etc.).

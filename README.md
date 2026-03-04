@@ -150,10 +150,16 @@ pip install -e .
 ### One-liner (install + run ASCII menu)
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/Leviticus-Triage/ir-sinkhole/main/scripts/ir-sinkhole-menu.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/Leviticus-Triage/ir-sinkhole/main/scripts/run.sh | bash
 ```
 
-This installs dependencies (apt), clones to `/opt/ir-sinkhole`, sets up the venv, and starts the interactive menu.
+Then enter your password when sudo prompts. This downloads the menu script, runs it with terminal input (so the menu works), installs dependencies, clones to `/opt/ir-sinkhole`, and starts the interactive menu.
+
+**Alternative** (download first, then run — avoids pipe entirely):
+
+```bash
+curl -sSL https://raw.githubusercontent.com/Leviticus-Triage/ir-sinkhole/main/scripts/ir-sinkhole-menu.sh -o /tmp/ir-menu.sh && sudo bash /tmp/ir-menu.sh
+```
 
 ### Install script only (no menu)
 

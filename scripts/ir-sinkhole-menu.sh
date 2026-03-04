@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # IR Sinkhole ASCII menu launcher
-# Intended to be usable via: curl -sSL <raw-url> | sudo bash
+# Run with: curl -sSL <raw-url> -o /tmp/ir-menu.sh && sudo bash /tmp/ir-menu.sh
+# (Download-then-execute avoids pipe/stdin issues with interactive read)
 
 set -e
 
@@ -12,12 +13,12 @@ DEFAULT_OUT="/var/lib/ir-sinkhole"
 
 banner() {
   clear
-  cat <<'BANNER'
-+------------------------------------------+
-|              IR SINKHOLE                 |
-|   Incident Response — ASCII Menu        |
-+------------------------------------------+
-BANNER
+  echo ""
+  echo "  ========================================"
+  echo "         I R   S I N K H O L E"
+  echo "     Incident Response - ASCII Menu"
+  echo "  ========================================"
+  echo ""
 }
 
 require_root() {
@@ -88,12 +89,12 @@ menu_main() {
     echo "[4] Stop containment (remove firewall)"
     echo "[5] Quit"
     echo
-    read -rp "Select option [1-5]: " choice </dev/tty || exit 0
+    read -rp "Select option [1-5]: " choice || exit 0
     case "$choice" in
-      1) do_status ; read -rp "Press Enter to continue..." _ </dev/tty ;;
-      2) do_capture ; read -rp "Press Enter to continue..." _ </dev/tty ;;
-      3) do_contain ; read -rp "Press Enter to continue..." _ </dev/tty ;;
-      4) do_stop ; read -rp "Press Enter to continue..." _ </dev/tty ;;
+      1) do_status ; read -rp "Press Enter to continue..." _ ;;
+      2) do_capture ; read -rp "Press Enter to continue..." _ ;;
+      3) do_contain ; read -rp "Press Enter to continue..." _ ;;
+      4) do_stop ; read -rp "Press Enter to continue..." _ ;;
       5) echo "Bye." ; exit 0 ;;
       *) echo "Invalid choice." ; sleep 1 ;;
     esac
@@ -107,13 +108,13 @@ do_status() {
 
 do_capture() {
   echo
-  read -rp "Capture duration (e.g. 15m, 60, 1h) [15m]: " dur </dev/tty
+  read -rp "Capture duration (e.g. 15m, 60, 1h) [15m]: " dur
   dur=${dur:-15m}
-  read -rp "Output directory [$DEFAULT_OUT]: " out </dev/tty
+  read -rp "Output directory [$DEFAULT_OUT]: " out
   out=${out:-$DEFAULT_OUT}
-  read -rp "Interface for tshark [any]: " iface </dev/tty
+  read -rp "Interface for tshark [any]: " iface
   iface=${iface:-any}
-  read -rp "Run tshark (PCAP) ? [Y/n]: " usecap </dev/tty
+  read -rp "Run tshark (PCAP) ? [Y/n]: " usecap
   usecap=${usecap:-Y}
 
   local args=(capture -d "$dur" -o "$out" -i "$iface")
@@ -127,13 +128,13 @@ do_capture() {
 
 do_contain() {
   echo
-  read -rp "Output directory with capture [$DEFAULT_OUT]: " out </dev/tty
+  read -rp "Output directory with capture [$DEFAULT_OUT]: " out
   out=${out:-$DEFAULT_OUT}
-  read -rp "First sinkhole port [19000]: " pstart </dev/tty
+  read -rp "First sinkhole port [19000]: " pstart
   pstart=${pstart:-19000}
-  read -rp "Drop all other egress? [Y/n]: " drop </dev/tty
+  read -rp "Drop all other egress? [Y/n]: " drop
   drop=${drop:-Y}
-  read -rp "Record containment PCAP on loopback? (PATH or empty to skip): " rec </dev/tty
+  read -rp "Record containment PCAP on loopback? (PATH or empty to skip): " rec
 
   local args=(contain -o "$out" --port-start "$pstart")
   if [[ "$drop" =~ ^[Nn]$ ]]; then
@@ -159,6 +160,8 @@ main() {
   require_root
   ensure_dependencies
   ensure_install
+  # Reconnect stdin to terminal (fixes read when script was started via pipe)
+  exec 0</dev/tty 2>/dev/null || true
   menu_main
 }
 
