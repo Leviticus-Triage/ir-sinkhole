@@ -15,18 +15,19 @@ LOG = logging.getLogger(__name__)
 PortMap = dict[tuple[str, str], int]
 
 
-def _nft(cmd: str, dry_run: bool = False) -> tuple[int, str]:
-    """Run nft -c 'cmd' or echo cmd. Returns (code, stderr)."""
-    full = ["nft", "-c", cmd]
+def _nft(cmd: str, check_only: bool = False) -> tuple[int, str]:
+    """Run an nft command. Returns (returncode, stderr).
+    If check_only=True, uses -c to validate without applying."""
+    full = ["nft"] + (["-c"] if check_only else []) + [cmd]
     try:
-        r = subprocess.run(full, capture_output=True, text=True, timeout=5)
+        r = subprocess.run(full, capture_output=True, text=True, timeout=10)
         return r.returncode, (r.stderr or "")
     except (subprocess.TimeoutExpired, FileNotFoundError) as e:
         return -1, str(e)
 
 
 def nftables_available() -> bool:
-    code, _ = _nft("list tables")
+    code, _ = _nft("list tables", check_only=True)
     return code == 0
 
 
@@ -37,24 +38,42 @@ def apply_firewall(port_map: PortMap, config: FirewallConfig, family: str = "ip"
     """
     table = config.table_name
     chain = config.chain_name
-    # Flush/delete if exists so we're idempotent
+
     _nft(f"delete table {family} {table}")
-    _nft(f"add table {family} {table}")
-    _nft(f"add chain {family} {table} {chain} {{ type filter hook output priority 0 ; policy accept ; }}")
-    # Allow loopback first
+
+    code, err = _nft(f"add table {family} {table}")
+    if code != 0:
+        LOG.error("Failed to create nftables table %s: %s", table, err)
+        return False
+    LOG.info("Created nftables table %s %s", family, table)
+
+    code, err = _nft(f"add chain {family} {table} {chain} {{ type nat hook output priority -100 ; policy accept ; }}")
+    if code != 0:
+        LOG.error("Failed to create chain %s (type nat, hook output): %s", chain, err)
+        return False
+    LOG.info("Created chain %s (type nat, hook output, priority -100)", chain)
+
     _nft(f"add rule {family} {table} {chain} oifname \"lo\" accept")
+
+    ok_count = 0
+    fail_count = 0
     for (remote_ip, remote_port), local_port in port_map.items():
-        # DNAT: packets to remote_ip:remote_port go to 127.0.0.1:local_port
-        # In 'ip' table output we use 'dnat to 127.0.0.1:local_port'
         cmd = f"add rule {family} {table} {chain} ip daddr {remote_ip} tcp dport {remote_port} dnat to 127.0.0.1:{local_port}"
         code, err = _nft(cmd)
         if code != 0:
-            LOG.warning("nft %s failed: %s", cmd, err)
+            LOG.warning("DNAT rule failed for %s:%s: %s", remote_ip, remote_port, err.strip())
+            fail_count += 1
             continue
-        LOG.info("DNAT %s:%s -> 127.0.0.1:%s", remote_ip, remote_port, local_port)
+        ok_count += 1
+
+    LOG.info("DNAT rules applied: %d OK, %d failed (out of %d endpoints)", ok_count, fail_count, len(port_map))
+
     if config.drop_all_egress_after_redirect:
-        _nft(f"add rule {family} {table} {chain} drop")
-        LOG.info("Egress drop rule added (containment)")
+        code, err = _nft(f"add rule {family} {table} {chain} drop")
+        if code != 0:
+            LOG.warning("Egress drop rule failed: %s", err.strip())
+        else:
+            LOG.info("Egress drop rule added — all non-redirected outbound traffic blocked")
     return True
 
 
@@ -78,7 +97,7 @@ def save_rules_to_file(port_map: PortMap, config: FirewallConfig, path: Path, fa
         f"flush table {family} {table} 2>/dev/null",
         f"delete table {family} {table} 2>/dev/null",
         f"add table {family} {table}",
-        f"add chain {family} {table} {chain} {{ type filter hook output priority 0 ; policy accept ; }}",
+        f"add chain {family} {table} {chain} {{ type nat hook output priority -100 ; policy accept ; }}",
         "add rule %s %s %s oifname \"lo\" accept" % (family, table, chain),
     ]
     for (remote_ip, remote_port), local_port in port_map.items():

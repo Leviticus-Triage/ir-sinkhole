@@ -9,13 +9,13 @@ VENV_DIR="$INSTALL_DIR/venv"
 IR_BIN_LINK="/usr/local/bin/ir-sinkhole"
 DEFAULT_OUT="/var/lib/ir-sinkhole"
 
-RED='\033[0;31m'
-GRN='\033[0;32m'
-YLW='\033[1;33m'
-CYN='\033[0;36m'
-BLD='\033[1m'
-DIM='\033[2m'
-RST='\033[0m'
+RED=$'\033[0;31m'
+GRN=$'\033[0;32m'
+YLW=$'\033[1;33m'
+CYN=$'\033[0;36m'
+BLD=$'\033[1m'
+DIM=$'\033[2m'
+RST=$'\033[0m'
 
 line()  { printf "${DIM}────────────────────────────────────────────${RST}\n"; }
 info()  { printf "${CYN}[*]${RST} %s\n" "$*"; }
@@ -235,7 +235,7 @@ do_contain() {
 do_stop() {
   banner
   printf "${BLD}  ── STOP ──${RST}\n\n"
-  info "Removing nftables rules and PID file ...\n"
+  info "Removing nftables rules and PID file ..."
   line
   ir stop 2>&1 && ok "Firewall removed, containment stopped." || warn "Stop returned error (firewall may already be removed)."
   line
