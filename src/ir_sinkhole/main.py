@@ -73,6 +73,14 @@ def cmd_capture(args: argparse.Namespace) -> int:
 
 def _parse_duration(s: str) -> int:
     s = s.strip().lower()
+    if s.endswith("sec"):
+        return int(s[:-3])
+    if s.endswith("seconds"):
+        return int(s[:-7])
+    if s.endswith("s"):
+        return int(s[:-1])
+    if s.endswith("min"):
+        return int(s[:-3]) * 60
     if s.endswith("m"):
         return int(s[:-1]) * 60
     if s.endswith("h"):

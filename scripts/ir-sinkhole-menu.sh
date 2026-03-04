@@ -125,10 +125,10 @@ do_status() {
 do_capture() {
   banner
   printf "${BLD}  ── CAPTURE ──${RST}\n\n"
-  info "Configure the capture phase. Press Enter for defaults.\n"
+  info "Configure the capture phase. Press Enter for defaults."
   line
 
-  ask "  Duration (e.g. 15m, 1h, 2h, or seconds) [15m]:" dur
+  ask "  Duration (e.g. 60s, 15m, 1h, 2h) [15m]:" dur
   dur=${dur:-15m}
 
   ask "  Output directory [${DEFAULT_OUT}]:" out
