@@ -33,20 +33,23 @@ pause_menu() {
 
 banner() {
   clear
-  printf "${BLD}${CYN}"
-  cat <<'EOF'
-  ╔════════════════════════════════════════════════════════════════════╗
-  ║     ________     _____ _____   ____ __ __  ______  __    ______  ║
-  ║    /  _/ __ \   / ___//  _/ | / / //_// / / / __ \/ /   / ____/ ║
-  ║    / // /_/ /   \__ \ / //  |/ / ,<  / /_/ / / / / /   / __/    ║
-  ║  _/ // _, _/   ___/ // // /|  / /| |/ __  / /_/ / /___/ /___    ║
-  ║ /___/_/ |_|   /____/___/_/ |_/_/ |_/_/ /_/\____/_____/_____/    ║
-  ║                                                                  ║
-  ║           Incident Response Containment  v1.0.0                  ║
-  ║           By Leviticus-Triage                                    ║
-  ╚════════════════════════════════════════════════════════════════════╝
-EOF
-  printf "${RST}\n"
+  local W=66
+  local border
+  border=$(printf '═%.0s' $(seq 1 $W))
+  _bx() { printf "${BLD}${CYN}  ║${RST}${BLD}${CYN}%-${W}s${RST}${BLD}${CYN}║${RST}\n" "$1"; }
+
+  printf "${BLD}${CYN}  ╔%s╗${RST}\n" "$border"
+  _bx '    ________     _____ _____   ____ __ __  ______  __    ______'
+  _bx '   /  _/ __ \   / ___//  _/ | / / //_// / / / __ \/ /   / ____/'
+  _bx '   / // /_/ /   \__ \ / //  |/ / ,<  / /_/ / / / / /   / __/'
+  _bx ' _/ // _, _/   ___/ // // /|  / /| |/ __  / /_/ / /___/ /___'
+  _bx '/___/_/ |_|   /____/___/_/ |_/_/ |_/_/ /_/\____/_____/_____/'
+  _bx ''
+  _bx '         Incident Response Containment  v1.0.0'
+  _bx '         By Leviticus-Triage'
+  printf "${BLD}${CYN}  ╚%s╝${RST}\n" "$border"
+
+  echo ""
   printf "  ${DIM}Install dir :${RST} %s\n" "$INSTALL_DIR"
   printf "  ${DIM}Output dir  :${RST} %s\n" "$DEFAULT_OUT"
   echo ""
