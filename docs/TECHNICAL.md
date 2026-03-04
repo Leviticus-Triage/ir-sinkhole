@@ -14,10 +14,14 @@ ir-sinkhole/
 │   ├── capture.py            # Connection polling, tshark, endpoints
 │   ├── replay.py             # PCAP → replay DB (scapy/dpkt), save/load JSON
 │   ├── sinkhole.py           # Asyncio TCP servers, replay/stub handler
-│   ├── firewall.py           # nftables add/remove, script export
+│   ├── dns_sinkhole.py       # DNS interception (UDP 53, asyncio)
+│   ├── firewall.py           # nftables add/remove, conntrack flush, script export
 │   └── main.py               # CLI: status, capture, contain, stop
 ├── scripts/
-│   └── ir-sinkhole-menu.sh   # ASCII menu + install (curl one-liner)
+│   ├── run.sh                # Bootstrap for curl one-liner
+│   ├── ir-sinkhole-menu.sh   # ASCII menu + install (curl one-liner)
+│   └── examples/
+│       └── check-infection-orderbuddy.sh  # 17-check IR triage script
 ├── docs/
 │   ├── ARCHITECTURE.md       # Design, threat model, data flow
 │   ├── HOWTO.md              # Workflows, test scenario
@@ -74,20 +78,31 @@ ir-sinkhole/
 
 Listening is done in `main.py` (contain): one `asyncio.start_server` per endpoint, then `apply_firewall(port_map)`, then `asyncio.gather(serve_forever...)`.
 
-### 2.5 `firewall.py`
+### 2.5 `dns_sinkhole.py`
+
+| Function / class | Purpose |
+|------------------|--------|
+| `DNS_SINKHOLE_PORT` | Default bind port (15353); nftables redirects UDP 53 → this port. |
+| `_build_response(data)` | Hand-parses DNS wire format (no external deps). Returns A=`127.0.0.1` or AAAA=`::1` response. |
+| `DnsSinkholeProtocol` | `asyncio.DatagramProtocol` that logs all queries and responds locally. |
+| `start_dns_sinkhole(bind_host, port)` | Creates the UDP transport; returns `(transport, queries_log)`. |
+
+### 2.6 `firewall.py`
 
 | Function | Purpose |
 |----------|--------|
 | `nftables_available()` | Run `nft list tables`, return true if exit 0. |
-| `apply_firewall(port_map, config, family="ip")` | Create table `ir_sinkhole`, chain `output`; rule `oifname "lo" accept`; for each `(ip, port)→local_port` add `ip daddr <ip> tcp dport <port> dnat to 127.0.0.1:<local_port>`; optionally add `drop`. |
+| `apply_firewall(port_map, config, family, allow_ips, dns_sinkhole_port)` | Create table `ir_sinkhole`, chain `output` (type nat, priority -100); whitelist `allow_ips`; per-endpoint DNAT; DNS redirect to `dns_sinkhole_port`; optional egress drop. |
 | `remove_firewall(config, family="ip")` | `nft delete table ip ir_sinkhole`. |
-| `save_rules_to_file(port_map, config, path, family="ip")` | Write an nft script to `path` for inspection or manual restore. |
+| `save_rules_to_file(port_map, config, path, family, allow_ips, dns_sinkhole_port)` | Write an nft script to `path` for inspection or manual restore. |
+| `flush_conntrack(port_map, allow_ips)` | Run `conntrack -D` for each captured endpoint (excluding whitelisted IPs) to force reconnections through DNAT. |
 
-### 2.6 `main.py`
+### 2.7 `main.py`
 
 - **Entry point:** `ir_sinkhole.main:main` (set in `pyproject.toml`).
 - **Subcommands:** `status`, `capture`, `contain`, `stop`.
-- **contain:** Load `remote_endpoints.json`, build replay DB from `capture.pcap`, create sinkhole servers, write PID and `nft_containment.nft`, register SIGINT/SIGTERM to call `remove_firewall` and unlink PID; start asyncio servers, `apply_firewall(port_map)`, then `asyncio.gather(serve_forever...)`. Optional `--record-pcap`: start tshark on loopback.
+- **contain:** Load `remote_endpoints.json`, build replay DB from `capture.pcap`, create sinkhole servers, optionally start DNS sinkhole, write PID and `nft_containment.nft`, register SIGINT/SIGTERM cleanup; apply firewall with whitelist and DNS redirect, flush conntrack, then `asyncio.gather(serve_forever...)`.
+- **New flags:** `--allow-ip` (repeatable), `--no-dns-sinkhole`, `--no-conntrack-flush`.
 
 ---
 
@@ -97,7 +112,7 @@ Listening is done in `main.py` (contain): one `asyncio.start_server` per endpoin
 |---------|---------|----------|
 | `ir-sinkhole status` | — | — |
 | `ir-sinkhole capture` | `-d`, `-o`, `-i`, `--poll-interval`, `--no-tshark`, `--tshark-filter` | `15m`, `/var/lib/ir-sinkhole`, `any`, `5`, tshark on, `tcp` |
-| `ir-sinkhole contain` | `-o`, `--port-start`, `--no-drop-egress`, `--record-pcap` | `/var/lib/ir-sinkhole`, `19000`, drop egress, no record |
+| `ir-sinkhole contain` | `-o`, `--port-start`, `--no-drop-egress`, `--record-pcap`, `--allow-ip`, `--no-dns-sinkhole`, `--no-conntrack-flush` | `/var/lib/ir-sinkhole`, `19000`, drop on, no record, DNS sinkhole on, conntrack flush on |
 | `ir-sinkhole stop` | — | — |
 
 Global: `-v` / `--verbose` for DEBUG logging.

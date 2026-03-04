@@ -98,30 +98,94 @@ flowchart TB
 - **nftables (not iptables):** Modern, scriptable, and easier to manage a dynamic set of DNAT rules. One table per run; cleanup is a single table delete.
 - **Per-endpoint local port:** Each (remote_ip, remote_port) is mapped to a distinct local port so the sinkhole can look up replay data by the port on which the connection arrived.
 - **Replay vs. stub:** If we have PCAP-derived payloads for that endpoint, we replay them in order to mimic C2 behavior. Otherwise we send a minimal HTTP 200 and keep the socket open to avoid RST/timeout.
-- **TCP only:** UDP or other protocols would require different handling (e.g. stateless reply or stateful proxy). Current scope is TCP-only for simplicity and coverage of most C2-over-HTTP(s)/custom-TCP scenarios.
+- **TCP only (C2 data plane):** UDP or other protocols would require different handling (e.g. stateless reply or stateful proxy). Current scope is TCP-only for the sinkhole data plane. DNS (UDP 53) is separately handled by the DNS sinkhole module.
+- **DNS Sinkhole:** Intercepts all outbound DNS queries via nftables redirect to a local UDP listener. Responds with `127.0.0.1` (A) / `::1` (AAAA) for all queries. Prevents DNS-based C2 tunneling (T1071.004) and blocks domain resolution for cloud API exfiltration.
+- **Conntrack flush:** On containment start, existing conntrack entries for captured endpoints are purged. This forces the kernel to route subsequent packets for those flows through the DNAT rules rather than the existing NAT mapping. Without this, established connections bypass containment.
+- **Management IP whitelist (`--allow-ip`):** Specified IPs are exempted from all containment rules (DNAT and egress drop). This prevents responder lockout during remote IR.
 - **IPv4 only (current):** Rules are in the `ip` family. IPv6 can be added with a separate `ip6` table and the same logic.
 
 ---
 
-## 6. Limitations (reference)
+## 6. Containment coverage matrix
 
-- TCP only; no UDP/ICMP.
-- Outbound-only redirection; no modification of inbound traffic.
-- IPv4 only in the reference nftables rules.
-- Replay is best-effort (sequence-ordered TCP payloads; no full reassembly of overlapping/retransmitted segments).
-- No TLS decryption; replay is at TCP payload level (opaque bytes).
-- Single-host tool; no distributed or coordinated sinkhole.
+### What IR Sinkhole handles
 
-See also [Scope and limitations](../README.md#scope-and-limitations) in the main README.
+| Threat vector | MITRE ATT&CK | Mitigation | Module |
+|--------------|--------------|------------|--------|
+| Direct TCP C2 | T1571, T1573 | DNAT to local sinkhole with replay/stub | `sinkhole.py` + `firewall.py` |
+| DNS C2 tunneling | T1071.004 | All UDP 53 → local DNS sinkhole | `dns_sinkhole.py` |
+| Established connection hijacking | — | Conntrack flush on contain start | `firewall.py:flush_conntrack()` |
+| Non-C2 egress (data exfil) | T1041 | Optional drop-all-egress | `firewall.py` |
+| Responder lockout | — | `--allow-ip` whitelist | `firewall.py` |
+| Disconnect-triggered evasion | T1070, T1027, T1055, T1497 | Connection simulation prevents trigger | `sinkhole.py` |
+
+### What remains outside scope (and why)
+
+| Gap | Root cause | Impact | Recommended complement |
+|-----|-----------|--------|----------------------|
+| C2 over legitimate cloud APIs | New IPs not captured → no DNAT target. Egress drop is too broad. | Cloud-API C2 continues or all outbound breaks | Perimeter proxy with domain allowlist; TLS-inspecting gateway |
+| Non-DNS UDP C2 | Only DNS UDP is intercepted | Rare but possible via custom UDP protocols | Extend with per-endpoint UDP listeners |
+| IPv6 C2 | nftables rules use `ip` family only | IPv6-only C2 bypasses all rules | Add `ip6` nftables table (future) |
+| Injected code reusing existing socket FDs | Kernel conntrack sees same flow; even after flush, in-kernel socket state persists | Process injection over inherited sockets | Memory forensics (Volatility, LiME) + EDR |
+| TLS-encrypted C2 content | Replay is opaque bytes; no MitM | Malware may detect wrong TLS handshake and trigger evasion | TLS-inspecting proxy at perimeter (not on evidence host) |
+| Multi-host coordination | Host-local design | Lateral movement or distributed C2 | Network-level sinkhole at gateway/firewall |
+
+> **Design principle:** IR Sinkhole covers the most common containment scenarios (direct TCP C2, DNS tunneling, established connections). Remaining gaps are architectural — they require network-perimeter or endpoint-agent solutions. Documenting them honestly demonstrates security maturity, not weakness.
+
+```mermaid
+flowchart TB
+    subgraph Covered["✅ Covered by IR Sinkhole"]
+        TCP[Direct TCP C2]
+        DNS[DNS Tunneling]
+        CT[Conntrack Hijack]
+        EGRESS[Egress Drop]
+    end
+    subgraph Complementary["🔧 Requires Complementary Tools"]
+        CLOUD[Cloud API C2]
+        TLS[TLS Inspection]
+        IPV6[IPv6]
+        MEMF[Memory Forensics]
+    end
+    TCP --> CLOUD
+    DNS --> TLS
+    CT --> MEMF
+    EGRESS --> IPV6
+```
 
 ---
 
-## 7. Possible future extensions
+## 7. Companion tooling: post-containment triage
+
+IR Sinkhole ships with an example triage script (`scripts/examples/check-infection-orderbuddy.sh`) that demonstrates the post-containment workflow. While the sinkhole keeps the malware calm, the triage script performs 17 read-only forensic checks across the host:
+
+```mermaid
+sequenceDiagram
+    participant R as Responder
+    participant S as IR Sinkhole
+    participant T as Triage Script
+    participant H as Host
+
+    R->>S: ir-sinkhole contain
+    S->>H: DNAT + DNS sinkhole active
+    Note over H: Malware sees active connections
+    R->>T: ./check-infection-orderbuddy.sh
+    T->>H: 17 read-only checks
+    T->>R: infection_report.md
+    R->>S: ir-sinkhole stop
+    Note over R: Evidence preserved
+```
+
+The script checks: malware artifacts, IDE history, running processes, C2 connections, DNS cache, shell history, npm cache, browser history, persistence mechanisms, SSH keys, suspicious files, firewall logs, Node.js traces, IDE logs, malware repo directories, macOS-specific indicators (quarantine, TCC, Keychain), and network statistics.
+
+---
+
+## 8. Possible future extensions
 
 - **IPv6:** Add `ip6` nftables table and matching sinkhole port mapping.
 - **Structured logging:** JSON logs (e.g. per redirected connection) for SIEM integration.
-- **UDP:** Optional stateless or stateful handling for UDP C2 (DNS, custom).
+- **UDP sinkhole:** Per-endpoint stateless or stateful handling for custom UDP C2.
 - **Config file:** YAML/JSON config for automation and repeatable deployments.
+- **Generic triage template:** Campaign-agnostic version of the triage script with pluggable IOC lists.
 
 These are not committed roadmap items; they are listed to show where the design could grow without changing the core model.
 

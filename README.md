@@ -27,7 +27,8 @@
 - [CLI reference](#cli-reference)
 - [Interactive menu (one-liner)](#interactive-menu-one-liner)
 - [Output layout](#output-layout)
-- [Scope and limitations](#scope-and-limitations)
+- [Containment coverage](#containment-coverage)
+- [Companion: post-containment triage](#companion-post-containment-triage-script)
 - [Security considerations](#security-considerations)
 - [Terminology](#terminology)
 - [Documentation index](#documentation-index)
@@ -193,6 +194,8 @@ A web server is suspected of compromise. The SOC needs to triage without alertin
 | **Replay DB** | Extract server→client payloads per (IP, port) from PCAP | `replay.py` — scapy (dpkt fallback), `build_replay_db()`, JSON serialization |
 | **Sinkhole** | TCP listeners that replay or send stub responses | `sinkhole.py` — asyncio servers per endpoint, HTTP 200 stub fallback |
 | **Firewall** | DNAT + optional egress drop | `firewall.py` — nftables table `ir_sinkhole`, output hook, per-endpoint rules |
+| **DNS Sinkhole** | Intercept all DNS to block tunneling | `dns_sinkhole.py` — asyncio UDP server, hand-parsed DNS, logs all queries |
+| **Conntrack Flush** | Kill established connections | `firewall.py:flush_conntrack()` — forces reconnections through DNAT |
 | **CLI** | Entry point and subcommands | `main.py` — `status`, `capture`, `contain`, `stop` |
 | **Menu** | Interactive one-liner with guided prompts | `scripts/ir-sinkhole-menu.sh` — color-coded, verbose, download-then-run |
 
@@ -228,11 +231,14 @@ ir-sinkhole/
 │   ├── capture.py              # Connection polling (ss/conntrack), tshark wrapper
 │   ├── replay.py               # PCAP parsing (scapy/dpkt), replay DB build/save/load
 │   ├── sinkhole.py             # Asyncio TCP servers with replay or stub handler
-│   ├── firewall.py             # nftables rule management (add/remove/export)
+│   ├── dns_sinkhole.py         # DNS interception (UDP 53, T1071.004 mitigation)
+│   ├── firewall.py             # nftables DNAT, egress drop, conntrack flush
 │   └── main.py                 # CLI: status, capture, contain, stop
 ├── scripts/
 │   ├── run.sh                  # Bootstrap for curl one-liner (download-then-run)
-│   └── ir-sinkhole-menu.sh     # Interactive ASCII menu with guided prompts
+│   ├── ir-sinkhole-menu.sh     # Interactive ASCII menu with guided prompts
+│   └── examples/
+│       └── check-infection-orderbuddy.sh  # 17-check IR triage (macOS + Linux)
 ├── docs/
 │   ├── ARCHITECTURE.md         # Design, threat model, data flow diagrams
 │   ├── HOWTO.md                # Step-by-step IR workflows and test scenario
@@ -363,17 +369,90 @@ Each action shows step-by-step feedback and returns to the menu via `Press Enter
 
 ---
 
-## Scope and limitations
+## Containment coverage
 
-| Area | Status |
-|------|--------|
-| **TCP** | Fully supported (capture, redirect, replay) |
-| **UDP / ICMP** | Not supported (no redirect or replay) |
-| **Direction** | Outbound only; inbound traffic is not modified |
-| **IP version** | IPv4 only; IPv6 possible via separate `ip6` table |
-| **TLS** | Opaque byte replay; no decryption or MitM |
-| **Replay fidelity** | Best-effort (sequence-ordered payloads; no overlap/retransmit reassembly) |
-| **Scope** | Single host; no cross-machine coordination |
+What IR Sinkhole **handles** (v1.0.0):
+
+| Threat vector | Mitigation | Module |
+|--------------|------------|--------|
+| Direct TCP C2 connections | DNAT to local sinkhole with replay/stub | `sinkhole.py` + `firewall.py` |
+| DNS-based C2 tunneling (T1071.004) | All UDP 53 redirected to local DNS sinkhole | `dns_sinkhole.py` |
+| Established connection hijacking | Conntrack flush forces re-establishment through DNAT | `firewall.py:flush_conntrack()` |
+| Non-C2 egress (data exfil) | Optional drop-all-egress rule | `firewall.py` (nftables drop) |
+| Responder lockout | `--allow-ip` whitelist for SSH/management | `firewall.py` |
+
+### Remaining limitations (honest assessment)
+
+| Gap | Why it can't be solved at host level | Recommended complement |
+|-----|--------------------------------------|----------------------|
+| C2 over legitimate cloud APIs (GitHub, Slack, Google Docs) | New IPs not seen during capture → no DNAT. Egress drop blocks them but also breaks all outbound. | Perimeter proxy with domain allowlist; TLS-inspecting gateway (mitmproxy, squid ssl-bump) |
+| UDP C2 (non-DNS) | Only DNS UDP is redirected; no generic UDP sinkhole | Extendable — add UDP listeners per endpoint if needed |
+| IPv6 | nftables rules use `ip` family only | Add `ip6` table (future) |
+| Process injection + shared socket FD | Injected code reuses an existing socket's file descriptor; kernel conntrack sees it as the same connection | Memory forensics (Volatility, LiME) + EDR agent |
+| TLS-encrypted C2 content | Replay is opaque bytes; no decryption or MitM | TLS-inspecting proxy at network perimeter; not appropriate on the evidence host |
+| Single host | No coordination across multiple compromised machines | Network-level sinkhole at gateway/firewall |
+
+> **Design philosophy:** IR Sinkhole is one tool in the IR toolkit, not a silver bullet. It handles the most common containment scenario (direct TCP C2) and now covers DNS tunneling and established-connection hijacking. The remaining gaps require complementary tools at network or endpoint level — this is by design, not a deficiency.
+
+### Recommended IR toolkit integration
+
+```mermaid
+flowchart LR
+    subgraph Host["Compromised Host"]
+        IRS[IR Sinkhole<br>TCP + DNS containment]
+        MEM[Memory Forensics<br>LiME / Volatility]
+        EDR[EDR Agent<br>process monitoring]
+    end
+    subgraph Network["Network Perimeter"]
+        PROXY[TLS Proxy<br>mitmproxy / squid]
+        NSINK[Network Sinkhole<br>gateway-level redirect]
+        SIEM[SIEM<br>log correlation]
+    end
+    IRS --> MEM
+    IRS --> EDR
+    IRS -.->|"logs, PCAPs"| SIEM
+    NSINK --> PROXY
+    PROXY --> SIEM
+```
+
+---
+
+## Companion: post-containment triage script
+
+IR Sinkhole includes an example **host triage script** (`scripts/examples/check-infection-orderbuddy.sh`) that demonstrates how to perform post-containment forensic checks while the sinkhole keeps the malware calm. The script was originally developed for a real-world incident response case (Operation Dream Job / OrderBuddy campaign).
+
+**17 automated checks** (read-only, cross-platform macOS + Linux):
+
+| # | Check | What it looks for |
+|---|-------|-------------------|
+| 1 | Malware artifacts | `~/.vscode/test.js`, `package.json`, `node_modules/` |
+| 2 | IDE workspace history | VS Code / Cursor workspace storage for the malicious repo |
+| 3 | Running processes | `node test.js`, `.vscode` node processes |
+| 4 | Network connections | Active TCP to known C2 IPs, port 1244 |
+| 5 | DNS resolution history | Malware domains in system DNS logs |
+| 6 | Shell history | C2 IPs, malware URLs, suspicious npm commands |
+| 7 | npm cache | `.vscode` references in npm logs |
+| 8 | Browser history | IOC URLs in Chrome, Brave, Safari, Edge, Firefox |
+| 9 | Persistence | Launch Agents (macOS), crontab, systemd user services |
+| 10 | SSH keys | Recently modified `authorized_keys`, credential files |
+| 11 | Suspicious files | Recently created `test.js`, `payload*`, `*.sh` in home |
+| 12 | Firewall logs | C2 IPs in macOS Unified Log, Little Snitch, UFW |
+| 13 | Node.js traces | `/tmp` artifacts, npm debug logs |
+| 14 | IDE interaction logs | Cursor/VS Code storage for the malicious workspace |
+| 15 | Malware repo on disk | `orderbuddy*` directories, npm install / build artifacts |
+| 16 | macOS-specific | Quarantine flags, TCC/Keychain access, download history |
+| 17 | Network statistics | All established outbound connections with C2 highlight |
+
+**Usage (after containment is active):**
+
+```bash
+chmod +x scripts/examples/check-infection-orderbuddy.sh
+sudo ./scripts/examples/check-infection-orderbuddy.sh 2>&1 | tee ~/infection_check.log
+```
+
+The script generates a Markdown report at `~/infection_report_<timestamp>.md` and exits with code `1` (infection found), `2` (suspicious), or `0` (clean).
+
+> **Adapt for your own campaigns:** Replace the IOCs (C2 IPs, domains, file paths) with those from your specific incident. The script structure and 17-check methodology are campaign-agnostic.
 
 ---
 
@@ -411,6 +490,7 @@ Each action shows step-by-step feedback and returns to the menu via `Press Enter
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contribution guidelines |
 | [CHANGELOG.md](CHANGELOG.md) | Version history (Keep a Changelog / SemVer) |
 | [CITATION.cff](CITATION.cff) | Academic citation metadata |
+| [scripts/examples/](scripts/examples/) | Companion scripts (triage, IOC check) |
 
 ---
 

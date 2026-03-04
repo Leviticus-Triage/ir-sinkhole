@@ -136,3 +136,36 @@ For malware that uses HTTP C2 on a custom port (e.g. OrderBuddy on port 1244):
 3. Contain redirects all new connections to C2_IP:1244 to the local sinkhole; replay or stub keeps the malware from seeing a disconnect.
 
 No change to the workflow; only the endpoints and replay content are C2-specific.
+
+---
+
+## 6. Post-containment triage (companion script)
+
+After containment is active, run the included triage script to check the host for infection indicators while the malware remains calm:
+
+```bash
+chmod +x scripts/examples/check-infection-orderbuddy.sh
+sudo ./scripts/examples/check-infection-orderbuddy.sh 2>&1 | tee ~/infection_check.log
+```
+
+The script performs 17 read-only checks (malware artifacts, processes, C2 connections, DNS cache, persistence, browser history, SSH keys, etc.) and generates a Markdown report at `~/infection_report_<timestamp>.md`.
+
+**Full workflow:**
+
+```mermaid
+flowchart TD
+    A[Incident detected] --> B["ir-sinkhole capture --duration 15m"]
+    B --> C["ir-sinkhole contain --pcap capture.pcap"]
+    C --> D{Containment active}
+    D --> E["check-infection-orderbuddy.sh"]
+    D --> F["Memory dump (LiME / pmem)"]
+    D --> G["Disk image (dd / ewfacquire)"]
+    E --> H[infection_report.md]
+    F --> I[Evidence package]
+    G --> I
+    H --> I
+    I --> J["ir-sinkhole stop"]
+    J --> K[Full forensic analysis offline]
+```
+
+**Adapt for your own campaigns:** Replace the IOCs (C2 IPs, domains, file paths) in the script with those from your specific incident. The 17-check structure is campaign-agnostic.
