@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# IR Sinkhole — one-liner install (run with curl -sSL ... | sudo bash)
+# IR Sinkhole - one-liner install (run with curl -sSL ... | sudo bash)
 # Use only on the affected host or a dedicated IR/test machine. Requires root for capture/contain.
 
 set -e

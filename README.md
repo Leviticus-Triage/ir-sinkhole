@@ -5,7 +5,7 @@
 [![Platform: Linux](https://img.shields.io/badge/platform-Linux-informational.svg)](#requirements)
 [![Tests](https://github.com/Leviticus-Triage/ir-sinkhole/actions/workflows/tests.yml/badge.svg)](https://github.com/Leviticus-Triage/ir-sinkhole/actions/workflows/tests.yml)
 
-**Host-based incident response sinkhole** that silently redirects outbound C2 traffic to local listeners — preserving forensic evidence while preventing malware disconnect triggers during containment.
+**Host-based incident response sinkhole** that silently redirects outbound C2 traffic to local listeners - preserving forensic evidence while preventing malware disconnect triggers during containment.
 
 > **Target audience:** CSIRT, CERT, SOC L2/L3, DFIR teams, and security researchers.
 > Aligns with **NIST SP 800-61 Rev. 2** (containment, eradication, recovery) and **SANS IR** containment practices.
@@ -39,7 +39,7 @@
 
 ## Problem statement
 
-During incident response, the first instinct is to **disconnect** a compromised host from the network. However, many malware families — especially RATs, infostealers, and APT implants — actively monitor their network connectivity and trigger **evasive or destructive behavior** when they detect a loss of connection:
+During incident response, the first instinct is to **disconnect** a compromised host from the network. However, many malware families - especially RATs, infostealers, and APT implants - actively monitor their network connectivity and trigger **evasive or destructive behavior** when they detect a loss of connection:
 
 | Trigger behavior | Risk to the investigation |
 |------------------|---------------------------|
@@ -49,7 +49,7 @@ During incident response, the first instinct is to **disconnect** a compromised 
 | Config rotation / polymorphism | IOCs change (domains, hashes, encryption keys), invalidating existing signatures |
 | Stealth / evasive mode | Malware goes dormant or hides deeper, making detection harder |
 
-**IR Sinkhole solves this** by intercepting outbound traffic at the kernel level (nftables DNAT) and routing it to local TCP servers that mimic the original C2 responses — either replaying captured PCAP data or sending minimal stubs. The malware sees an active connection and does not trigger cleanup routines, giving the responder time for memory dumps, disk imaging, and live forensics.
+**IR Sinkhole solves this** by intercepting outbound traffic at the kernel level (nftables DNAT) and routing it to local TCP servers that mimic the original C2 responses - either replaying captured PCAP data or sending minimal stubs. The malware sees an active connection and does not trigger cleanup routines, giving the responder time for memory dumps, disk imaging, and live forensics.
 
 ---
 
@@ -61,7 +61,7 @@ Three commands on the compromised host (as root):
 # 1. Capture active connections + traffic (adjust duration to your needs)
 sudo ir-sinkhole capture -d 15m -o /var/lib/ir-sinkhole
 
-# 2. Start sinkhole — redirect all captured C2 traffic locally
+# 2. Start sinkhole - redirect all captured C2 traffic locally
 sudo ir-sinkhole contain -o /var/lib/ir-sinkhole
 
 # 3. Perform forensics while containment is active, then stop
@@ -102,7 +102,7 @@ flowchart LR
 ```
 
 1. **Capture (pre-isolation):** Poll active TCP connections via `ss` / `conntrack` and optionally run `tshark` to record a PCAP. Output: unique remote endpoints `(IP, port)` and server→client payloads for replay.
-2. **Contain:** For each endpoint, start a local TCP server on `127.0.0.1`; install `nftables` DNAT rules redirecting outbound traffic to the sinkhole. Optionally drop all other egress. The sinkhole replays captured payloads or sends an HTTP 200 stub — no real traffic leaves the host.
+2. **Contain:** For each endpoint, start a local TCP server on `127.0.0.1`; install `nftables` DNAT rules redirecting outbound traffic to the sinkhole. Optionally drop all other egress. The sinkhole replays captured payloads or sends an HTTP 200 stub - no real traffic leaves the host.
 3. **Forensics:** Run memory/disk capture and live analysis while the malware does not detect a disconnect.
 
 ---
@@ -154,7 +154,7 @@ IR Sinkhole addresses evasive behaviors categorized under the following ATT&CK t
 | [T1027](https://attack.mitre.org/techniques/T1027/) | Obfuscated Files or Information | Rotates encryption, changes config, morphs payload | No trigger event → IOCs remain consistent during analysis |
 | [T1497](https://attack.mitre.org/techniques/T1497/) | Virtualization/Sandbox Evasion | Detects analysis environment via network fingerprint | Replayed PCAP data mimics real C2 responses |
 | [T1571](https://attack.mitre.org/techniques/T1571/) | Non-Standard Port | C2 over custom TCP ports | Sinkhole binds per-endpoint, any port combination |
-| [T1573](https://attack.mitre.org/techniques/T1573/) | Encrypted Channel | TLS/custom encryption to C2 | Opaque byte replay — sinkhole doesn't need to decrypt |
+| [T1573](https://attack.mitre.org/techniques/T1573/) | Encrypted Channel | TLS/custom encryption to C2 | Opaque byte replay - sinkhole doesn't need to decrypt |
 
 ---
 
@@ -190,24 +190,24 @@ A web server is suspected of compromise. The SOC needs to triage without alertin
 
 | Component | Role | Implementation |
 |-----------|------|----------------|
-| **Capture** | Record active TCP connections and optional PCAP | `capture.py` — `ss` / `conntrack` parsing, `TsharkCapture` subprocess |
-| **Replay DB** | Extract server→client payloads per (IP, port) from PCAP | `replay.py` — scapy (dpkt fallback), `build_replay_db()`, JSON serialization |
-| **Sinkhole** | TCP listeners that replay or send stub responses | `sinkhole.py` — asyncio servers per endpoint, HTTP 200 stub fallback |
-| **Firewall** | DNAT + optional egress drop | `firewall.py` — nftables table `ir_sinkhole`, output hook, per-endpoint rules |
-| **DNS Sinkhole** | Intercept all DNS to block tunneling | `dns_sinkhole.py` — asyncio UDP server, hand-parsed DNS, logs all queries |
-| **Conntrack Flush** | Kill established connections | `firewall.py:flush_conntrack()` — forces reconnections through DNAT |
-| **CLI** | Entry point and subcommands | `main.py` — `status`, `capture`, `contain`, `stop` |
-| **Menu** | Interactive one-liner with guided prompts | `scripts/ir-sinkhole-menu.sh` — color-coded, verbose, download-then-run |
+| **Capture** | Record active TCP connections and optional PCAP | `capture.py` - `ss` / `conntrack` parsing, `TsharkCapture` subprocess |
+| **Replay DB** | Extract server→client payloads per (IP, port) from PCAP | `replay.py` - scapy (dpkt fallback), `build_replay_db()`, JSON serialization |
+| **Sinkhole** | TCP listeners that replay or send stub responses | `sinkhole.py` - asyncio servers per endpoint, HTTP 200 stub fallback |
+| **Firewall** | DNAT + optional egress drop | `firewall.py` - nftables table `ir_sinkhole`, output hook, per-endpoint rules |
+| **DNS Sinkhole** | Intercept all DNS to block tunneling | `dns_sinkhole.py` - asyncio UDP server, hand-parsed DNS, logs all queries |
+| **Conntrack Flush** | Kill established connections | `firewall.py:flush_conntrack()` - forces reconnections through DNAT |
+| **CLI** | Entry point and subcommands | `main.py` - `status`, `capture`, `contain`, `stop` |
+| **Menu** | Interactive one-liner with guided prompts | `scripts/ir-sinkhole-menu.sh` - color-coded, verbose, download-then-run |
 
 ```mermaid
 graph TB
     subgraph src["src/ir_sinkhole"]
-        main["main.py — CLI entry point"]
-        capture["capture.py — ss, conntrack, tshark"]
-        replay["replay.py — PCAP → replay DB"]
-        sinkhole["sinkhole.py — asyncio TCP servers"]
-        firewall["firewall.py — nftables DNAT"]
-        config["config.py — dataclass configs"]
+        main["main.py - CLI entry point"]
+        capture["capture.py - ss, conntrack, tshark"]
+        replay["replay.py - PCAP → replay DB"]
+        sinkhole["sinkhole.py - asyncio TCP servers"]
+        firewall["firewall.py - nftables DNAT"]
+        config["config.py - dataclass configs"]
     end
     main --> capture
     main --> replay
@@ -266,8 +266,8 @@ ir-sinkhole/
 - **Linux** with **nftables** (kernel 3.13+, any modern distro)
 - **Python 3.10+**
 - **Root** for `capture` and `contain` (nftables and raw sockets)
-- **tshark** — optional but recommended (enables PCAP-based replay)
-- **scapy** — optional (enables PCAP parsing for replay DB; dpkt as fallback)
+- **tshark** - optional but recommended (enables PCAP-based replay)
+- **scapy** - optional (enables PCAP parsing for replay DB; dpkt as fallback)
 
 ---
 
@@ -304,10 +304,10 @@ After install, `ir-sinkhole` is available as a CLI command.
 
 | Command | Description | Key options |
 |---------|-------------|-------------|
-| `ir-sinkhole status` | Show active TCP connections and containment state | — |
+| `ir-sinkhole status` | Show active TCP connections and containment state | - |
 | `ir-sinkhole capture` | Record connections + optional PCAP | `-d 15m\|1h\|2h`, `-o DIR`, `-i IFACE`, `--no-tshark`, `--tshark-filter BPF` |
 | `ir-sinkhole contain` | Start sinkhole, apply nftables DNAT | `-o DIR`, `--port-start 19000`, `--no-drop-egress`, `--record-pcap PATH` |
-| `ir-sinkhole stop` | Remove firewall rules and PID file | — |
+| `ir-sinkhole stop` | Remove firewall rules and PID file | - |
 
 Global: `-v` / `--verbose` for DEBUG-level logging.
 
@@ -340,17 +340,17 @@ The interactive menu provides a **guided experience** with color-coded output, p
 curl -sSL https://raw.githubusercontent.com/Leviticus-Triage/ir-sinkhole/main/scripts/run.sh | bash
 ```
 
-The bootstrap script (`run.sh`) downloads the menu to a temp file and executes it with terminal stdin — this ensures interactive prompts work correctly even when piped through `curl`.
+The bootstrap script (`run.sh`) downloads the menu to a temp file and executes it with terminal stdin - this ensures interactive prompts work correctly even when piped through `curl`.
 
 **Menu options:**
 
 | Option | Action | Interactive prompts |
 |--------|--------|---------------------|
-| **[1] Status** | Show connections + containment state | — |
+| **[1] Status** | Show connections + containment state | - |
 | **[2] Capture** | Start recording | Duration, output dir, interface, tshark (Y/n) |
 | **[3] Contain** | Start sinkhole + firewall | Output dir, port start, drop egress (Y/n), record PCAP |
-| **[4] Stop** | Remove firewall | — |
-| **[5] Quit** | Exit menu | — |
+| **[4] Stop** | Remove firewall | - |
+| **[5] Quit** | Exit menu | - |
 
 Each action shows step-by-step feedback and returns to the menu via `Press Enter to return to menu...`.
 
@@ -386,13 +386,13 @@ What IR Sinkhole **handles** (v1.0.0):
 | Gap | Why it can't be solved at host level | Recommended complement |
 |-----|--------------------------------------|----------------------|
 | C2 over legitimate cloud APIs (GitHub, Slack, Google Docs) | New IPs not seen during capture → no DNAT. Egress drop blocks them but also breaks all outbound. | Perimeter proxy with domain allowlist; TLS-inspecting gateway (mitmproxy, squid ssl-bump) |
-| UDP C2 (non-DNS) | Only DNS UDP is redirected; no generic UDP sinkhole | Extendable — add UDP listeners per endpoint if needed |
+| UDP C2 (non-DNS) | Only DNS UDP is redirected; no generic UDP sinkhole | Extendable - add UDP listeners per endpoint if needed |
 | IPv6 | nftables rules use `ip` family only | Add `ip6` table (future) |
 | Process injection + shared socket FD | Injected code reuses an existing socket's file descriptor; kernel conntrack sees it as the same connection | Memory forensics (Volatility, LiME) + EDR agent |
 | TLS-encrypted C2 content | Replay is opaque bytes; no decryption or MitM | TLS-inspecting proxy at network perimeter; not appropriate on the evidence host |
 | Single host | No coordination across multiple compromised machines | Network-level sinkhole at gateway/firewall |
 
-> **Design philosophy:** IR Sinkhole is one tool in the IR toolkit, not a silver bullet. It handles the most common containment scenario (direct TCP C2) and now covers DNS tunneling and established-connection hijacking. The remaining gaps require complementary tools at network or endpoint level — this is by design, not a deficiency.
+> **Design philosophy:** IR Sinkhole is one tool in the IR toolkit, not a silver bullet. It handles the most common containment scenario (direct TCP C2) and now covers DNS tunneling and established-connection hijacking. The remaining gaps require complementary tools at network or endpoint level - this is by design, not a deficiency.
 
 ### Recommended IR toolkit integration
 
@@ -460,7 +460,7 @@ The script generates a Markdown report at `~/infection_report_<timestamp>.md` an
 
 - **Root required** for capture (raw sockets) and containment (nftables). Run only on hosts under active IR control.
 - **No telemetry.** All state is local to the configured output directory.
-- **Sensitive output.** PCAPs and connection logs may contain credentials, tokens, or exfiltrated data — handle according to organizational evidence procedures.
+- **Sensitive output.** PCAPs and connection logs may contain credentials, tokens, or exfiltrated data - handle according to organizational evidence procedures.
 - **Vulnerability reporting:** See [SECURITY.md](SECURITY.md).
 
 ---

@@ -14,7 +14,7 @@
 
 set -uo pipefail
 
-# macOS hat kein GNU timeout — portable Alternative
+# macOS hat kein GNU timeout - portable Alternative
 if ! command -v timeout &>/dev/null; then
     timeout() {
         local duration="$1"; shift
@@ -115,7 +115,7 @@ echo "" >> "$REPORT_FILE"
 
 echo ""
 echo -e "${BOLD}╔══════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BOLD}║  ORDERBUDDY MALWARE — INFEKTIONSPRÜFUNG                 ║${NC}"
+echo -e "${BOLD}║  ORDERBUDDY MALWARE - INFEKTIONSPRÜFUNG                 ║${NC}"
 echo -e "${BOLD}║  Dieses Script liest nur. Nichts wird verändert.        ║${NC}"
 echo -e "${BOLD}╚══════════════════════════════════════════════════════════╝${NC}"
 echo ""
@@ -131,7 +131,7 @@ echo -e "  Datum:    $(date)"
 log_header "1. Malware-Artefakte im ~/.vscode/"
 
 if [ -f "$HOME/.vscode/test.js" ]; then
-    log_critical "~/.vscode/test.js EXISTIERT — Stage-2 Payload wurde heruntergeladen!"
+    log_critical "~/.vscode/test.js EXISTIERT - Stage-2 Payload wurde heruntergeladen!"
     log_info "  SHA256: $(sha256_hash "$HOME/.vscode/test.js")"
     log_info "  Größe: $(wc -c < "$HOME/.vscode/test.js" 2>/dev/null) bytes"
     log_info "  Erstellt: $(file_mtime "$HOME/.vscode/test.js")"
@@ -144,7 +144,7 @@ else
 fi
 
 if [ -f "$HOME/.vscode/package.json" ]; then
-    log_critical "~/.vscode/package.json EXISTIERT — Malware-Dependencies konfiguriert!"
+    log_critical "~/.vscode/package.json EXISTIERT - Malware-Dependencies konfiguriert!"
     log_info "  Inhalt:"
     cat "$HOME/.vscode/package.json" 2>/dev/null | while read -r line; do
         log_info "    $line"
@@ -154,7 +154,7 @@ else
 fi
 
 if [ -d "$HOME/.vscode/node_modules" ]; then
-    log_critical "~/.vscode/node_modules/ EXISTIERT — Malware-Dependencies wurden installiert!"
+    log_critical "~/.vscode/node_modules/ EXISTIERT - Malware-Dependencies wurden installiert!"
     log_info "  Anzahl Pakete: $(ls -1 "$HOME/.vscode/node_modules/" 2>/dev/null | wc -l)"
     log_info "  Gesamtgröße: $(du -sh "$HOME/.vscode/node_modules/" 2>/dev/null | cut -f1)"
     log_info "  Erstellt: $(file_mtime "$HOME/.vscode/node_modules")"
@@ -165,7 +165,7 @@ fi
 # Prüfe auch alternative Pfade
 for alt_path in "$HOME/j" "$HOME/.j" "$HOME/p" "$HOME/.p"; do
     if [ -d "$alt_path" ] || [ -f "$alt_path" ]; then
-        log_warning "$alt_path existiert — möglicher Malware-Pfad"
+        log_warning "$alt_path existiert - möglicher Malware-Pfad"
     fi
 done
 
@@ -534,7 +534,7 @@ done
 log_header "12. Firewall & Netzwerk-Logs"
 
 if [ "$(uname)" = "Darwin" ]; then
-    # macOS Unified Log — Netzwerkverbindungen
+    # macOS Unified Log - Netzwerkverbindungen
     log_info "Suche in macOS Unified Logs (letzte 7 Tage)..."
     for search_term in "147.124.202.225" "38.92.47.157" "gurucooldown" "alanservice.vercel" "jsonkeeper"; do
         result=$(timeout 15 log show --predicate "eventMessage CONTAINS '$search_term'" --style syslog --last 7d 2>/dev/null | head -5)
@@ -547,7 +547,7 @@ if [ "$(uname)" = "Darwin" ]; then
     done
     
     if [ -d "/Library/Little Snitch" ] || [ -d "$HOME/Library/Application Support/Little Snitch" ]; then
-        log_info "Little Snitch ist installiert — prüfe Regeln..."
+        log_info "Little Snitch ist installiert - prüfe Regeln..."
         ls_logs=$(find "$HOME/Library/Application Support/Little Snitch" -name "*.log" -mtime -7 2>/dev/null)
         if [ -n "$ls_logs" ]; then
             for logf in $ls_logs; do
@@ -676,7 +676,7 @@ if [ -n "$orderbuddy_locations" ]; then
         
         # Prüfe ob .vscode/tasks.json vorhanden (auto-execute)
         if [ -f "$loc/.vscode/tasks.json" ]; then
-            log_warning "tasks.json vorhanden in $loc/.vscode/ — Auto-Execute möglich"
+            log_warning "tasks.json vorhanden in $loc/.vscode/ - Auto-Execute möglich"
         fi
     done
 else
@@ -743,7 +743,7 @@ if [ "$(uname)" = "Darwin" ]; then
         fi
     fi
 else
-    log_info "Nicht macOS — macOS-spezifische Checks übersprungen"
+    log_info "Nicht macOS - macOS-spezifische Checks übersprungen"
 fi
 
 # ================================================================

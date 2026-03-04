@@ -65,7 +65,7 @@ ir-sinkhole/
 | `save_replay_db(db, path)` | Serialize to JSON (base64 payloads). |
 | `load_replay_db(path)` | Deserialize from JSON. |
 
-`ReplayDB` type: `dict[(str, str), list[bytes]]` — key is `(remote_ip, remote_port)`.
+`ReplayDB` type: `dict[(str, str), list[bytes]]` - key is `(remote_ip, remote_port)`.
 
 ### 2.4 `sinkhole.py`
 
@@ -110,10 +110,10 @@ Listening is done in `main.py` (contain): one `asyncio.start_server` per endpoin
 
 | Command | Options | Defaults |
 |---------|---------|----------|
-| `ir-sinkhole status` | — | — |
+| `ir-sinkhole status` | - | - |
 | `ir-sinkhole capture` | `-d`, `-o`, `-i`, `--poll-interval`, `--no-tshark`, `--tshark-filter` | `15m`, `/var/lib/ir-sinkhole`, `any`, `5`, tshark on, `tcp` |
 | `ir-sinkhole contain` | `-o`, `--port-start`, `--no-drop-egress`, `--record-pcap`, `--allow-ip`, `--no-dns-sinkhole`, `--no-conntrack-flush` | `/var/lib/ir-sinkhole`, `19000`, drop on, no record, DNS sinkhole on, conntrack flush on |
-| `ir-sinkhole stop` | — | — |
+| `ir-sinkhole stop` | - | - |
 
 Global: `-v` / `--verbose` for DEBUG logging.
 
@@ -123,11 +123,11 @@ Global: `-v` / `--verbose` for DEBUG logging.
 
 | File | Format | Produced by | Consumed by |
 |------|--------|-------------|-------------|
-| `connections.jsonl` | One JSON object per line: `{ "elapsed_seconds", "count", "connections": [...] }` | capture | — (audit) |
+| `connections.jsonl` | One JSON object per line: `{ "elapsed_seconds", "count", "connections": [...] }` | capture | - (audit) |
 | `remote_endpoints.json` | JSON array of `{ "ip", "port" }` | capture | contain |
 | `capture.pcap` | PCAP | tshark in capture | replay (build_replay_db) |
-| `replay_db.json` | JSON: `{ "ip:port": [ "base64...", ... ] }` | contain (from pcap) | — (optional; contain builds in memory) |
-| `nft_containment.nft` | nft script | contain | — (inspection/restore) |
+| `replay_db.json` | JSON: `{ "ip:port": [ "base64...", ... ] }` | contain (from pcap) | - (optional; contain builds in memory) |
+| `nft_containment.nft` | nft script | contain | - (inspection/restore) |
 
 ---
 

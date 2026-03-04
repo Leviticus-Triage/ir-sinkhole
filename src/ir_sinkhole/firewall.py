@@ -98,7 +98,7 @@ def apply_firewall(
         if code != 0:
             LOG.warning("Egress drop rule failed: %s", err.strip())
         else:
-            LOG.info("Egress drop rule added — all non-redirected outbound traffic blocked")
+            LOG.info("Egress drop rule added - all non-redirected outbound traffic blocked")
     return True
 
 

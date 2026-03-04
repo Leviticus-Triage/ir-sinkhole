@@ -250,7 +250,7 @@ def cmd_stop(args: argparse.Namespace) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(
         prog="ir-sinkhole",
-        description="Incident Response Sinkhole — containment without triggering malware disconnect behaviors",
+        description="Incident Response Sinkhole - containment without triggering malware disconnect behaviors",
     )
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose logging")
     sub = parser.add_subparsers(dest="cmd", required=True)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# IR Sinkhole — Interactive ASCII Menu
+# IR Sinkhole - Interactive ASCII Menu
 # Download-then-run: curl -sSL <url>/run.sh | bash
 set -e
 
@@ -153,9 +153,9 @@ do_capture() {
   local args=(capture -d "$dur" -o "$out" -i "$iface")
   if [[ "$usecap" =~ ^[Nn]$ ]]; then
     args+=(--no-tshark)
-    warn "tshark disabled — replay will use stubs only."
+    warn "tshark disabled - replay will use stubs only."
   else
-    ok "tshark enabled — PCAP will be written to ${out}/capture.pcap"
+    ok "tshark enabled - PCAP will be written to ${out}/capture.pcap"
   fi
 
   echo ""
@@ -224,21 +224,21 @@ do_contain() {
   local args=(contain -o "$cdir" --port-start "$pstart")
   if [[ "$drop" =~ ^[Nn]$ ]]; then
     args+=(--no-drop-egress)
-    warn "Egress NOT blocked — only redirecting captured endpoints."
+    warn "Egress NOT blocked - only redirecting captured endpoints."
   else
-    ok "Full containment — all egress will be blocked except sinkhole."
+    ok "Full containment - all egress will be blocked except sinkhole."
   fi
   if [[ "$usedns" =~ ^[Nn]$ ]]; then
     args+=(--no-dns-sinkhole)
-    warn "DNS sinkhole disabled — DNS tunneling NOT blocked."
+    warn "DNS sinkhole disabled - DNS tunneling NOT blocked."
   else
-    ok "DNS sinkhole enabled — all DNS queries redirected to 127.0.0.1"
+    ok "DNS sinkhole enabled - all DNS queries redirected to 127.0.0.1"
   fi
   if [[ "$useflush" =~ ^[Nn]$ ]]; then
     args+=(--no-conntrack-flush)
-    warn "Conntrack flush disabled — established connections stay alive."
+    warn "Conntrack flush disabled - established connections stay alive."
   else
-    ok "Conntrack flush enabled — established C2 connections will be killed."
+    ok "Conntrack flush enabled - established C2 connections will be killed."
   fi
   if [[ -n "$wl_ips" ]]; then
     IFS=',' read -ra ips <<< "$wl_ips"
@@ -283,10 +283,10 @@ do_stop() {
 menu_main() {
   while true; do
     banner
-    printf "  ${BLD}[1]${RST}  Status          ${DIM}— show connections & containment state${RST}\n"
-    printf "  ${BLD}[2]${RST}  Capture         ${DIM}— record connections + PCAP${RST}\n"
-    printf "  ${BLD}[3]${RST}  Contain         ${DIM}— start sinkhole & apply firewall${RST}\n"
-    printf "  ${BLD}[4]${RST}  Stop            ${DIM}— remove firewall rules${RST}\n"
+    printf "  ${BLD}[1]${RST}  Status          ${DIM} -  show connections & containment state${RST}\n"
+    printf "  ${BLD}[2]${RST}  Capture         ${DIM} -  record connections + PCAP${RST}\n"
+    printf "  ${BLD}[3]${RST}  Contain         ${DIM} -  start sinkhole & apply firewall${RST}\n"
+    printf "  ${BLD}[4]${RST}  Stop            ${DIM} -  remove firewall rules${RST}\n"
     printf "  ${BLD}[5]${RST}  Quit\n"
     echo ""
     line
@@ -310,7 +310,7 @@ main() {
   require_root
   echo ""
   line
-  info "IR Sinkhole — Setup"
+  info "IR Sinkhole - Setup"
   line
   echo ""
   ensure_dependencies

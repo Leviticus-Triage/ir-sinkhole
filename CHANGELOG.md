@@ -11,13 +11,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **DNS Sinkhole:** Local asyncio UDP server intercepts all DNS queries (nftables UDP 53 redirect → `dns_sinkhole.py`). Responds with `127.0.0.1` / `::1`. Logs every query. Mitigates DNS tunneling C2 (T1071.004).
 - **Conntrack flush:** `flush_conntrack()` purges existing NAT entries for captured endpoints on containment start, forcing reconnections through DNAT rules. Prevents established connections from bypassing containment.
 - **Management IP whitelist:** `--allow-ip` flag exempts specified IPs from all containment rules (DNAT, egress drop, DNS redirect). Prevents responder lockout during remote IR.
-- **Companion triage script:** `scripts/examples/check-infection-orderbuddy.sh` — 17-check read-only host triage (cross-platform macOS + Linux). Originally developed for a real Operation Dream Job / OrderBuddy incident.
+- **Companion triage script:** `scripts/examples/check-infection-orderbuddy.sh` - 17-check read-only host triage (cross-platform macOS + Linux). Originally developed for a real Operation Dream Job / OrderBuddy incident.
 - **Containment coverage matrix:** Honest gap analysis in README and ARCHITECTURE.md documenting what is covered, what remains outside scope, and which complementary tools fill the gaps.
 - **IR toolkit integration diagram:** Mermaid flowchart showing how IR Sinkhole fits into a broader incident response toolchain.
 
 ### Changed
 
-- `firewall.py`: Removed `-c` dry-run flag from `_nft()` — rules are now actually applied. Changed chain type from `filter` to `nat` (priority -100) for DNAT support.
+- `firewall.py`: Removed `-c` dry-run flag from `_nft()` - rules are now actually applied. Changed chain type from `filter` to `nat` (priority -100) for DNAT support.
 - `main.py`: Duration parser now accepts `s`, `sec`, `seconds`, `min` suffixes.
 - `ir-sinkhole-menu.sh`: Fixed ANSI-C quoting for colors, banner frame alignment, interactive prompts for DNS sinkhole / conntrack / whitelist.
 

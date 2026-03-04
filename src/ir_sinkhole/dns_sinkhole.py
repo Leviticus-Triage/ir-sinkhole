@@ -3,7 +3,7 @@ Minimal DNS sinkhole: intercepts all DNS queries over UDP, logs them,
 and responds with 127.0.0.1 (A) or ::1 (AAAA) to prevent DNS-based
 C2 tunneling (MITRE T1071.004).
 
-No external dependencies — hand-parses the DNS wire format.
+No external dependencies - hand-parses the DNS wire format.
 """
 import asyncio
 import logging

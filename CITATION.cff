@@ -10,7 +10,7 @@ license: MIT
 authors:
   - name: IR Sinkhole Contributors
 abstract: >
-  Incident Response Sinkhole — host-level containment without triggering
+  Incident Response Sinkhole - host-level containment without triggering
   malware disconnect behaviors (dead-man switch, anti-forensics). Redirects
   outbound TCP to a local sinkhole with optional PCAP replay for C2 mimicry.
 keywords:

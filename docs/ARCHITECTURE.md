@@ -1,4 +1,4 @@
-# IR Sinkhole — Architecture and Design
+# IR Sinkhole - Architecture and Design
 
 This document describes the design rationale, threat model, data flow, and technical decisions for IR Sinkhole. It is intended for CSIRT/CERT reviewers, security architects, and contributors.
 
@@ -114,9 +114,9 @@ flowchart TB
 |--------------|--------------|------------|--------|
 | Direct TCP C2 | T1571, T1573 | DNAT to local sinkhole with replay/stub | `sinkhole.py` + `firewall.py` |
 | DNS C2 tunneling | T1071.004 | All UDP 53 → local DNS sinkhole | `dns_sinkhole.py` |
-| Established connection hijacking | — | Conntrack flush on contain start | `firewall.py:flush_conntrack()` |
+| Established connection hijacking | - | Conntrack flush on contain start | `firewall.py:flush_conntrack()` |
 | Non-C2 egress (data exfil) | T1041 | Optional drop-all-egress | `firewall.py` |
-| Responder lockout | — | `--allow-ip` whitelist | `firewall.py` |
+| Responder lockout | - | `--allow-ip` whitelist | `firewall.py` |
 | Disconnect-triggered evasion | T1070, T1027, T1055, T1497 | Connection simulation prevents trigger | `sinkhole.py` |
 
 ### What remains outside scope (and why)
@@ -130,7 +130,7 @@ flowchart TB
 | TLS-encrypted C2 content | Replay is opaque bytes; no MitM | Malware may detect wrong TLS handshake and trigger evasion | TLS-inspecting proxy at perimeter (not on evidence host) |
 | Multi-host coordination | Host-local design | Lateral movement or distributed C2 | Network-level sinkhole at gateway/firewall |
 
-> **Design principle:** IR Sinkhole covers the most common containment scenarios (direct TCP C2, DNS tunneling, established connections). Remaining gaps are architectural — they require network-perimeter or endpoint-agent solutions. Documenting them honestly demonstrates security maturity, not weakness.
+> **Design principle:** IR Sinkhole covers the most common containment scenarios (direct TCP C2, DNS tunneling, established connections). Remaining gaps are architectural - they require network-perimeter or endpoint-agent solutions. Documenting them honestly demonstrates security maturity, not weakness.
 
 ```mermaid
 flowchart TB
@@ -193,9 +193,9 @@ These are not committed roadmap items; they are listed to show where the design 
 
 ## 8. References and further reading
 
-- NIST SP 800-61 Rev. 2 (Computer Security Incident Handling Guide) — containment and evidence preservation.
-- SANS Institute — Incident Response Process and containment strategies.
-- MITRE ATT&CK — Defense Evasion, Impact (e.g. Data Encrypted for Impact, Inhibit System Recovery) for behaviors that may be triggered on disconnect.
+- NIST SP 800-61 Rev. 2 (Computer Security Incident Handling Guide) - containment and evidence preservation.
+- SANS Institute - Incident Response Process and containment strategies.
+- MITRE ATT&CK - Defense Evasion, Impact (e.g. Data Encrypted for Impact, Inhibit System Recovery) for behaviors that may be triggered on disconnect.
 
 ---
 
