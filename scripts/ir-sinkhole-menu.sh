@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
-# IR Sinkhole ASCII menu launcher
-# Run with: curl -sSL <raw-url> -o /tmp/ir-menu.sh && sudo bash /tmp/ir-menu.sh
-# (Download-then-execute avoids pipe/stdin issues with interactive read)
-
+# IR Sinkhole — Interactive ASCII Menu
+# Download-then-run: curl -sSL <url>/run.sh | bash
 set -e
 
 GITHUB_REPO="${GITHUB_REPO:-https://github.com/Leviticus-Triage/ir-sinkhole}"
@@ -11,30 +9,73 @@ VENV_DIR="$INSTALL_DIR/venv"
 IR_BIN_LINK="/usr/local/bin/ir-sinkhole"
 DEFAULT_OUT="/var/lib/ir-sinkhole"
 
+RED='\033[0;31m'
+GRN='\033[0;32m'
+YLW='\033[1;33m'
+CYN='\033[0;36m'
+BLD='\033[1m'
+DIM='\033[2m'
+RST='\033[0m'
+
+line()  { printf "${DIM}────────────────────────────────────────────${RST}\n"; }
+info()  { printf "${CYN}[*]${RST} %s\n" "$*"; }
+ok()    { printf "${GRN}[+]${RST} %s\n" "$*"; }
+warn()  { printf "${YLW}[!]${RST} %s\n" "$*"; }
+err()   { printf "${RED}[✗]${RST} %s\n" "$*"; }
+ask()   { printf "${BLD}$1${RST} "; read -r "$2"; }
+
+pause_menu() {
+  echo ""
+  line
+  printf "${DIM}Press Enter to return to menu...${RST}"
+  read -r _
+}
+
 banner() {
   clear
+  printf "${BLD}${CYN}"
+  cat <<'EOF'
+
+    ╔══════════════════════════════════════╗
+    ║         I R   S I N K H O L E       ║
+    ║   Incident Response Containment     ║
+    ╚══════════════════════════════════════╝
+EOF
+  printf "${RST}\n"
+  printf "  ${DIM}Install dir :${RST} %s\n" "$INSTALL_DIR"
+  printf "  ${DIM}Output dir  :${RST} %s\n" "$DEFAULT_OUT"
+  printf "  ${DIM}Version     :${RST} 1.0.0\n"
   echo ""
-  echo "  ========================================"
-  echo "         I R   S I N K H O L E"
-  echo "     Incident Response - ASCII Menu"
-  echo "  ========================================"
-  echo ""
+  line
 }
+
+ir() {
+  "$VENV_DIR/bin/ir-sinkhole" "$@"
+}
+
+# ── Setup ─────────────────────────────────────────
 
 require_root() {
   if [ "$(id -u)" -ne 0 ]; then
-    echo "[!] This script must run as root (sudo)." >&2
+    err "This script must run as root (sudo)."
     exit 1
   fi
 }
 
 ensure_dependencies() {
-  echo "[+] Installing base dependencies (python3, venv, pip, nftables, tshark) if needed..."
-  if command -v apt-get >/dev/null 2>&1; then
-    apt-get update -qq || true
-    apt-get install -y -qq python3 python3-venv python3-pip nftables tshark git || true
+  info "Checking system dependencies..."
+  local missing=()
+  command -v python3  >/dev/null 2>&1 || missing+=(python3)
+  command -v git      >/dev/null 2>&1 || missing+=(git)
+  dpkg -s python3-venv >/dev/null 2>&1 || missing+=(python3-venv)
+
+  if [ ${#missing[@]} -gt 0 ]; then
+    info "Installing: ${missing[*]} + nftables, tshark ..."
+    apt-get update -qq 2>/dev/null || true
+    apt-get install -y -qq python3 python3-venv python3-pip nftables tshark git 2>/dev/null || true
+    ok "System packages installed."
   else
-    echo "[!] Non-Debian system detected. Please ensure python3, python3-venv, python3-pip, nftables, tshark, and git are installed." >&2
+    ok "System dependencies present."
   fi
 }
 
@@ -43,124 +84,205 @@ ensure_install() {
   cd "$INSTALL_DIR"
 
   if [ -d .git ]; then
-    echo "[+] Updating existing ir-sinkhole clone in $INSTALL_DIR..."
-    git pull --quiet || true
+    info "Updating existing clone in $INSTALL_DIR ..."
+    git pull --quiet 2>/dev/null || true
+    ok "Repository updated."
+  elif [ ! -f pyproject.toml ]; then
+    info "Cloning $GITHUB_REPO ..."
+    git clone --depth 1 "$GITHUB_REPO" . || { err "git clone failed."; exit 1; }
+    ok "Repository cloned."
   else
-    if [ ! -f pyproject.toml ]; then
-      echo "[+] Cloning ir-sinkhole from $GITHUB_REPO into $INSTALL_DIR..."
-      if ! command -v git >/dev/null 2>&1; then
-        echo "[!] git not available. Install git or pre-populate $INSTALL_DIR with the source tree." >&2
-        exit 1
-      fi
-      git clone --depth 1 "$GITHUB_REPO" . || {
-        echo "[!] git clone failed. Check GITHUB_REPO or network." >&2
-        exit 1
-      }
-    fi
+    ok "Source already present."
   fi
 
-  echo "[+] Setting up Python virtualenv in $VENV_DIR..."
-  python3 -m venv "$VENV_DIR"
-  "$VENV_DIR/bin/pip" install --quiet --upgrade pip
-  # Try dev extras first (for pytest etc.), fall back to normal install
-  "$VENV_DIR/bin/pip" install --quiet -e ".[dev]" 2>/dev/null || "$VENV_DIR/bin/pip" install --quiet .
-  "$VENV_DIR/bin/pip" install --quiet scapy 2>/dev/null || true
+  if [ ! -f "$VENV_DIR/bin/ir-sinkhole" ]; then
+    info "Creating Python virtualenv ..."
+    python3 -m venv "$VENV_DIR"
+    "$VENV_DIR/bin/pip" install --quiet --upgrade pip
+    "$VENV_DIR/bin/pip" install --quiet -e ".[dev]" 2>/dev/null || "$VENV_DIR/bin/pip" install --quiet .
+    "$VENV_DIR/bin/pip" install --quiet scapy 2>/dev/null || true
+    ok "Python environment ready."
+  else
+    ok "Python environment already set up."
+  fi
 
   ln -sf "$VENV_DIR/bin/ir-sinkhole" "$IR_BIN_LINK" 2>/dev/null || true
   mkdir -p "$DEFAULT_OUT" /var/run
-
-  echo "[+] ir-sinkhole installed. Binary: $VENV_DIR/bin/ir-sinkhole"
 }
 
-ir() {
-  "$VENV_DIR/bin/ir-sinkhole" "$@"
-}
-
-menu_main() {
-  local choice
-  while true; do
-    banner
-    echo "Install dir : $INSTALL_DIR"
-    echo "Output dir  : $DEFAULT_OUT"
-    echo
-    echo "[1] Status"
-    echo "[2] Capture (start recording)"
-    echo "[3] Contain (start sinkhole & firewall)"
-    echo "[4] Stop containment (remove firewall)"
-    echo "[5] Quit"
-    echo
-    read -rp "Select option [1-5]: " choice || exit 0
-    case "$choice" in
-      1) do_status ; read -rp "Press Enter to continue..." _ ;;
-      2) do_capture ; read -rp "Press Enter to continue..." _ ;;
-      3) do_contain ; read -rp "Press Enter to continue..." _ ;;
-      4) do_stop ; read -rp "Press Enter to continue..." _ ;;
-      5) echo "Bye." ; exit 0 ;;
-      *) echo "Invalid choice." ; sleep 1 ;;
-    esac
-  done
-}
+# ── Menu actions ──────────────────────────────────
 
 do_status() {
-  echo
-  ir status || echo "[!] ir-sinkhole status failed."
+  banner
+  printf "${BLD}  ── STATUS ──${RST}\n\n"
+  info "Querying active TCP connections and containment state ...\n"
+  line
+  ir status 2>&1 || warn "ir-sinkhole status returned an error."
+  line
+  pause_menu
 }
 
 do_capture() {
-  echo
-  read -rp "Capture duration (e.g. 15m, 60, 1h) [15m]: " dur
+  banner
+  printf "${BLD}  ── CAPTURE ──${RST}\n\n"
+  info "Configure the capture phase. Press Enter for defaults.\n"
+  line
+
+  ask "  Duration (e.g. 15m, 1h, 2h, or seconds) [15m]:" dur
   dur=${dur:-15m}
-  read -rp "Output directory [$DEFAULT_OUT]: " out
+
+  ask "  Output directory [${DEFAULT_OUT}]:" out
   out=${out:-$DEFAULT_OUT}
-  read -rp "Interface for tshark [any]: " iface
+
+  ask "  Network interface for tshark [any]:" iface
   iface=${iface:-any}
-  read -rp "Run tshark (PCAP) ? [Y/n]: " usecap
+
+  ask "  Enable tshark PCAP recording? (Y/n) [Y]:" usecap
   usecap=${usecap:-Y}
+
+  echo ""
+  line
 
   local args=(capture -d "$dur" -o "$out" -i "$iface")
   if [[ "$usecap" =~ ^[Nn]$ ]]; then
     args+=(--no-tshark)
+    warn "tshark disabled — replay will use stubs only."
+  else
+    ok "tshark enabled — PCAP will be written to ${out}/capture.pcap"
   fi
 
-  echo "[+] Running: ir-sinkhole ${args[*]}"
-  ir "${args[@]}" || echo "[!] capture failed."
+  echo ""
+  info "Starting capture with: ir-sinkhole ${args[*]}"
+  info "Duration: $dur | Interface: $iface | Output: $out"
+  echo ""
+  line
+
+  ir "${args[@]}" 2>&1 && ok "Capture completed successfully." || err "Capture failed."
+
+  echo ""
+  info "Output files:"
+  ls -lh "$out"/connections.jsonl "$out"/remote_endpoints.json "$out"/capture.pcap 2>/dev/null | while read -r l; do
+    printf "  ${DIM}%s${RST}\n" "$l"
+  done
+
+  echo ""
+  if [ -f "$out/remote_endpoints.json" ]; then
+    local count
+    count=$(python3 -c "import json; print(len(json.load(open('$out/remote_endpoints.json'))))" 2>/dev/null || echo "?")
+    ok "Remote endpoints captured: ${BLD}${count}${RST}"
+  fi
+
+  pause_menu
 }
 
 do_contain() {
-  echo
-  read -rp "Output directory with capture [$DEFAULT_OUT]: " out
-  out=${out:-$DEFAULT_OUT}
-  read -rp "First sinkhole port [19000]: " pstart
-  pstart=${pstart:-19000}
-  read -rp "Drop all other egress? [Y/n]: " drop
-  drop=${drop:-Y}
-  read -rp "Record containment PCAP on loopback? (PATH or empty to skip): " rec
+  banner
+  printf "${BLD}  ── CONTAIN ──${RST}\n\n"
 
-  local args=(contain -o "$out" --port-start "$pstart")
+  local out="$DEFAULT_OUT"
+  if [ ! -f "$out/remote_endpoints.json" ]; then
+    err "No capture data found at $out/remote_endpoints.json"
+    warn "Run [2] Capture first before starting containment."
+    pause_menu
+    return
+  fi
+
+  local count
+  count=$(python3 -c "import json; print(len(json.load(open('$out/remote_endpoints.json'))))" 2>/dev/null || echo "?")
+  ok "Found ${BLD}${count}${RST} remote endpoint(s) from previous capture."
+  echo ""
+  line
+
+  ask "  Output directory with capture [$DEFAULT_OUT]:" cdir
+  cdir=${cdir:-$DEFAULT_OUT}
+
+  ask "  First sinkhole port [19000]:" pstart
+  pstart=${pstart:-19000}
+
+  ask "  Drop ALL other egress traffic? (Y/n) [Y]:" drop
+  drop=${drop:-Y}
+
+  ask "  Record containment PCAP? Enter path or leave empty:" rec
+
+  echo ""
+  line
+
+  local args=(contain -o "$cdir" --port-start "$pstart")
   if [[ "$drop" =~ ^[Nn]$ ]]; then
     args+=(--no-drop-egress)
+    warn "Egress NOT blocked — only redirecting captured endpoints."
+  else
+    ok "Full containment — all egress will be blocked except sinkhole."
   fi
   if [[ -n "$rec" ]]; then
     args+=(--record-pcap "$rec")
+    ok "Recording containment PCAP to: $rec"
   fi
 
-  echo
-  echo "[+] Starting containment. Press Ctrl+C in that session to stop."
-  echo "[!] Containment will run in the foreground now."
-  echo
-  ir "${args[@]}" || echo "[!] contain failed."
+  echo ""
+  info "Starting containment: ir-sinkhole ${args[*]}"
+  warn "Containment runs in foreground. Press Ctrl+C to stop and remove firewall."
+  echo ""
+  line
+  echo ""
+
+  ir "${args[@]}" 2>&1 || err "Containment ended with error."
+
+  ok "Containment stopped. Firewall rules removed."
+  pause_menu
 }
 
 do_stop() {
-  echo
-  ir stop || echo "[!] stop failed (firewall may already be removed)."
+  banner
+  printf "${BLD}  ── STOP ──${RST}\n\n"
+  info "Removing nftables rules and PID file ...\n"
+  line
+  ir stop 2>&1 && ok "Firewall removed, containment stopped." || warn "Stop returned error (firewall may already be removed)."
+  line
+  pause_menu
 }
+
+# ── Main menu ─────────────────────────────────────
+
+menu_main() {
+  while true; do
+    banner
+    printf "  ${BLD}[1]${RST}  Status          ${DIM}— show connections & containment state${RST}\n"
+    printf "  ${BLD}[2]${RST}  Capture         ${DIM}— record connections + PCAP${RST}\n"
+    printf "  ${BLD}[3]${RST}  Contain         ${DIM}— start sinkhole & apply firewall${RST}\n"
+    printf "  ${BLD}[4]${RST}  Stop            ${DIM}— remove firewall rules${RST}\n"
+    printf "  ${BLD}[5]${RST}  Quit\n"
+    echo ""
+    line
+    ask "  Select [1-5]:" choice
+    echo ""
+
+    case "$choice" in
+      1) do_status ;;
+      2) do_capture ;;
+      3) do_contain ;;
+      4) do_stop ;;
+      5) echo ""; ok "Bye."; exit 0 ;;
+      *) warn "Invalid option: '$choice'. Enter 1-5."; sleep 1 ;;
+    esac
+  done
+}
+
+# ── Entry point ───────────────────────────────────
 
 main() {
   require_root
+  echo ""
+  line
+  info "IR Sinkhole — Setup"
+  line
+  echo ""
   ensure_dependencies
   ensure_install
-  # Reconnect stdin to terminal (fixes read when script was started via pipe)
+  echo ""
+  ok "Ready. Launching menu ..."
+  sleep 1
+
   exec 0</dev/tty 2>/dev/null || true
   menu_main
 }
