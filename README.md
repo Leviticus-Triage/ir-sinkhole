@@ -84,7 +84,7 @@ flowchart TB
         N[nftables output hook]
         S[Sinkhole TCP servers]
     end
-    M -->|"connect(66.235.175.117, 1244)"| N
+    M -->|"connect(C2_IP, C2_port)"| N
     N -->|"DNAT to 127.0.0.1:19000"| S
     S -->|"Replay or HTTP 200 stub"| M
     N -.->|"drop (optional)"| X[Other egress blocked]
