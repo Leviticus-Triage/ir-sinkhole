@@ -27,6 +27,24 @@ So the goal is: **containment without signaling “disconnect”** to the malwar
 
 ## 3. High-level design
 
+```mermaid
+flowchart LR
+    subgraph Capture["1. Capture"]
+        C1[ss/conntrack] --> C2[endpoints]
+        C3[tshark] --> C4[pcap]
+        C4 --> C5[replay DB]
+    end
+    subgraph Contain["2. Contain"]
+        C2 --> D1[Sinkhole listeners]
+        C5 --> D1
+        D1 --> D2[nftables DNAT]
+        D2 --> D3[No real egress]
+    end
+    subgraph Forensics["3. Forensics"]
+        D3 --> E1[Memory/disk capture]
+    end
+```
+
 1. **Capture phase (pre-isolation)**  
    - Poll active TCP connections (`ss`, or `conntrack` as fallback) at a configurable interval.  
    - Optionally run `tshark` to record a PCAP of the same period.  
@@ -45,25 +63,32 @@ So the goal is: **containment without signaling “disconnect”** to the malwar
 
 ## 4. Data flow
 
-```
-[ Malware / App ]  -->  connect(remote_ip, remote_port)
-        |
-        v
-[ Kernel / nftables output hook ]
-        |  DNAT: (remote_ip, remote_port) --> (127.0.0.1, sinkhole_port)
-        v
-[ Sinkhole TCP server on 127.0.0.1:sinkhole_port ]
-        |  Replay from PCAP or HTTP stub
-        v
-[ Malware / App ]  sees response, no disconnect
+### 4.1 Containment: packet path
+
+```mermaid
+flowchart LR
+    A[Malware connect] --> B[nftables output]
+    B -->|DNAT| C[127.0.0.1:sinkhole_port]
+    C --> D[Sinkhole server]
+    D -->|Replay or stub| A
 ```
 
-Capture phase:
+### 4.2 Capture phase: data pipeline
 
-```
-[ Host traffic ] --> tshark --> capture.pcap
-[ ss / conntrack ] --> connections.jsonl --> remote_endpoints.json
-[ capture.pcap ] --> scapy/dpkt --> replay_db (server→client payloads per endpoint)
+```mermaid
+flowchart TB
+    subgraph Input
+        T[Host TCP traffic]
+        P[ss / conntrack poll]
+    end
+    T --> tshark[tshark]
+    tshark --> pcap[capture.pcap]
+    pcap --> replay[scapy/dpkt]
+    replay --> replay_db[(replay_db.json)]
+    P --> conn[connections.jsonl]
+    conn --> endpoints[remote_endpoints.json]
+    endpoints --> contain[contain phase]
+    replay_db --> contain
 ```
 
 ---
