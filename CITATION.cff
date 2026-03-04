@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+title: IR Sinkhole
+message: "If you use this software in incident response, research, or reports, please cite it as below."
+type: software
+version: 1.0.0
+date-released: "2026-02-28"
+url: "https://github.com/Leviticus-Triage/ir-sinkhole"
+repository-code: "https://github.com/Leviticus-Triage/ir-sinkhole"
+license: MIT
+authors:
+  - name: IR Sinkhole Contributors
+abstract: >
+  Incident Response Sinkhole — host-level containment without triggering
+  malware disconnect behaviors (dead-man switch, anti-forensics). Redirects
+  outbound TCP to a local sinkhole with optional PCAP replay for C2 mimicry.
+keywords:
+  - incident response
+  - containment
+  - sinkhole
+  - digital forensics
+  - CSIRT
+  - malware

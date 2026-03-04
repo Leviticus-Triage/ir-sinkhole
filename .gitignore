@@ -1,0 +1,27 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# Testing / IDE
+.pytest_cache/
+.coverage
+htmlcov/
+.idea/
+.vscode/
+*.swp
+*~
+
+# Local / sensitive (do not commit IR data)
+/var/
+*.pcap
+*.log
+connections.jsonl
+remote_endpoints.json
+replay_db.json
